@@ -1,0 +1,6 @@
+# github.com/AlanQuatermain/go-gcm v0.0.0-20121029204122-c73ce2690a7f
+## explicit
+github.com/AlanQuatermain/go-gcm
+# github.com/google/uuid v1.5.0
+## explicit
+github.com/google/uuid

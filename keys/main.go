@@ -6,9 +6,20 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 )
+
+type KeyFile struct {
+	PrivateKey    string `json:"private_key"`
+	AdvKey        string `json:"adv_key"`
+	HashedKey     string `json:"hashed_key"`
+	PrivateKeyHex string `json:"private_key_hex"`
+	AdvKeyHex     string `json:"adv_key_hex"`
+	MAC           string `json:"mac"`
+	Payload       string `json:"payload"`
+}
 
 func advertisementTemplate() []byte {
 	adv := make([]byte, 31)
@@ -109,9 +120,25 @@ func main() {
 				fmt.Println("Payload:", payload)
 				fmt.Println()
 
-				keysContent := fmt.Sprintf("Private key: %s\nAdvertisement key: %s\nHashed adv key: %s\nPrivate key (Hex): %s\nAdvertisement key (Hex): %s\nMAC: %s\nPayload: %s\n",
-					privateKeyB64, publicKeyB64, s256B64, privateKeyHex, publicKeyHex, mac, payload)
-				err = os.WriteFile(fmt.Sprintf("keys/%s", fname), []byte(keysContent), 0644)
+				// keysContent := fmt.Sprintf("Private key: %s\nAdvertisement key: %s\nHashed adv key: %s\nPrivate key (Hex): %s\nAdvertisement key (Hex): %s\nMAC: %s\nPayload: %s\n",
+				// 	privateKeyB64, publicKeyB64, s256B64, privateKeyHex, publicKeyHex, mac, payload)
+				keyData := KeyFile{
+					PrivateKey:    privateKeyB64,
+					AdvKey:        publicKeyB64,
+					HashedKey:     s256B64,
+					PrivateKeyHex: privateKeyHex,
+					AdvKeyHex:     publicKeyHex,
+					MAC:           mac,
+					Payload:       payload,
+				}
+
+				keyDataString, err := json.Marshal(keyData)
+				if err != nil {
+					fmt.Println("Error marshalling key data:", err)
+					return
+				}
+
+				err = os.WriteFile(fmt.Sprintf("keys/%s", fname), []byte(keyDataString), 0644)
 				if err != nil {
 					fmt.Println("Error saving keys file:", err)
 					return

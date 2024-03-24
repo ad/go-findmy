@@ -1,0 +1,4 @@
+github.com/AlanQuatermain/go-gcm v0.0.0-20121029204122-c73ce2690a7f h1:3koBpJBDXLZCJDs/bj9BT6zfb7+6bqbdNMRSfyJnwOA=
+github.com/AlanQuatermain/go-gcm v0.0.0-20121029204122-c73ce2690a7f/go.mod h1:n5OGx2a8qiM2ey5SyT7n+s2sE00OtlyGPbl3jDYA7rU=
+github.com/google/uuid v1.5.0 h1:1p67kYwdtXjb0gL0BPiP1Av9wiZPo5A8z2cWkTZ+eyU=
+github.com/google/uuid v1.5.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
