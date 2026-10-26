@@ -32,7 +32,7 @@ func (a auth) SearchPartyAuth() (string, string, error) {
 type httpAnisette string
 
 func (u httpAnisette) Headers() (map[string]string, error) {
-	resp, err := http.Get(string(u))
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Get(string(u))
 	if err != nil {
 		return nil, err
 	}

@@ -40,7 +40,7 @@ type Fetcher struct {
 }
 
 func NewFetcher(a Anisette, c Credentials, relogin func(context.Context) error) *Fetcher {
-	return &Fetcher{Anisette: a, Credentials: c, Relogin: relogin, HTTP: http.DefaultClient, URL: FetchURL, Sleep: sleep}
+	return &Fetcher{Anisette: a, Credentials: c, Relogin: relogin, HTTP: &http.Client{Timeout: time.Minute}, URL: FetchURL, Sleep: sleep}
 }
 
 func sleep(ctx context.Context, d time.Duration) error {
