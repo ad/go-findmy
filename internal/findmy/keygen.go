@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -89,10 +90,15 @@ func newKeyFile(priv []byte) (KeyFile, error) {
 	}, nil
 }
 
+var ErrLegacyKeyFile = errors.New("keys file: made by the old keygen, the tag never gets reports; flash it with a new key")
+
 func ReadKeyFile(data []byte) (Key, error) {
 	var kf KeyFile
 	if err := json.Unmarshal(data, &kf); err != nil {
 		return Key{}, err
+	}
+	if adv, err := base64.StdEncoding.DecodeString(kf.AdvKey); err == nil && len(adv) == 57 {
+		return Key{}, ErrLegacyKeyFile
 	}
 	priv, err := base64.StdEncoding.DecodeString(kf.PrivateKey)
 	if err != nil {

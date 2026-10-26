@@ -340,6 +340,10 @@ func loadKeysFromFiles() (map[string]string, error) {
 			}
 
 			k, err := findmy.ReadKeyFile(key)
+			if errors.Is(err, findmy.ErrLegacyKeyFile) {
+				log.Printf("skipping %s: %v", filename, err)
+				continue
+			}
 			if err != nil {
 				return privkeys, fmt.Errorf("%s: %w", filename, err)
 			}

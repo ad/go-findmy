@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -70,6 +71,18 @@ func TestReadKeyFileUsesPrivateKey(t *testing.T) {
 				t.Errorf("got id %s private %x, want %s %x", k.ID, k.Private, c.wantID, c.priv)
 			}
 		})
+	}
+}
+
+func TestReadKeyFileRejectsLegacyAdvKey(t *testing.T) {
+	kf, err := NewKeyFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kf.AdvKey = base64.StdEncoding.EncodeToString(make([]byte, 57))
+	data, _ := json.Marshal(kf)
+	if _, err := ReadKeyFile(data); !errors.Is(err, ErrLegacyKeyFile) {
+		t.Errorf("err = %v, want ErrLegacyKeyFile", err)
 	}
 }
 
