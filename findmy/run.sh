@@ -20,6 +20,7 @@ for _ in $(seq 30); do
   curl -sf http://127.0.0.1:6969/health >/dev/null && break
   sleep 1
 done
+curl -sf http://127.0.0.1:6969/health >/dev/null || bashio::exit.nok "anisette sidecar did not start"
 
 MQTT_HOST=$(bashio::services mqtt "host")
 MQTT_PORT=$(bashio::services mqtt "port")
@@ -27,4 +28,6 @@ MQTT_USER=$(bashio::services mqtt "username")
 MQTT_PASSWORD=$(bashio::services mqtt "password")
 export MQTT_HOST MQTT_PORT MQTT_USER MQTT_PASSWORD
 
-exec go-findmy serve
+go-findmy serve &
+# Either process dying stops the add-on, so Supervisor shows it instead of a half-working add-on.
+wait -n
