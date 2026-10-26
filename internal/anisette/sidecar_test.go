@@ -6,11 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/Laky-64/appleservices/gsa"
 )
-
-var _ gsa.AnisetteProvider = (*Sidecar)(nil)
 
 func fakeSidecar(t *testing.T, handler http.HandlerFunc) *Sidecar {
 	t.Helper()

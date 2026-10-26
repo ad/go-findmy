@@ -29,7 +29,7 @@ func (s *Sidecar) Headers() (map[string]string, error) {
 	if h["X-Apple-I-MD"] == "" || h["X-Apple-I-MD-M"] == "" {
 		return nil, errors.New("anisette: sidecar headers lack X-Apple-I-MD or X-Apple-I-MD-M")
 	}
-	// appleservices reads the client info by this exact key; os-findmy-e spells it X-MMe-Client-Info.
+	// icloud reads the client info by this exact key; os-findmy-e spells it X-MMe-Client-Info.
 	for k, v := range h {
 		if k != clientInfo && strings.EqualFold(k, clientInfo) {
 			delete(h, k)
