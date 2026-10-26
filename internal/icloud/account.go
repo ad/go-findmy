@@ -132,7 +132,6 @@ func (a *Account) Cooldown() error {
 	return a.cooling()
 }
 
-// Refused starts the cooldown after a failed sidecar call that may have reached Apple.
 func (a *Account) Refused(err error) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()

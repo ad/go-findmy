@@ -165,6 +165,21 @@ func TestPollSendsNothingDuringCooldown(t *testing.T) {
 	}
 }
 
+func TestCooldownAloneDoesNotAskForLogin(t *testing.T) {
+	until := time.Now().Add(time.Hour)
+	fx := newPollFixture(t, map[string]any{"dsid": "1", "tokens": map[string]string{"searchPartyToken": "tok"}, "cooldownUntil": until})
+	fx.s.poll(context.Background(), time.Now())
+	if fx.pub["findmy/login_required"] != "OFF" {
+		t.Errorf("login_required %q during a cooldown with a usable token, want OFF", fx.pub["findmy/login_required"])
+	}
+
+	fx = newPollFixture(t, map[string]any{"cooldownUntil": until, "needLogin": "Apple rejected the Apple ID or password"})
+	fx.s.poll(context.Background(), time.Now())
+	if fx.pub["findmy/login_required"] != "ON" {
+		t.Errorf("login_required %q during a cooldown after a refusal, want ON", fx.pub["findmy/login_required"])
+	}
+}
+
 func TestSignInClearsLoginRequiredAtOnce(t *testing.T) {
 	fx := newPollFixture(t, signedIn)
 	fx.s.setLoginRequired(true)

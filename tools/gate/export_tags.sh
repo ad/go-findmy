@@ -33,7 +33,6 @@ keys)
   run -v "$out":/out go-findmy-gate sh -euc '
     trap "rm -f /tmp/macadi/export-login.json" EXIT
     umask 077
-    rm -f /out/airtags.json
     rc=0
     # tag_keys.py asks Apple for locations after saving the keys, so a failure may follow the save.
     tools/restored_run.sh /tmp/macadi/export --tags --tags-save /out/airtags.json || rc=$?

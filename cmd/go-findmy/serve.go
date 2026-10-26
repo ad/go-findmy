@@ -106,12 +106,11 @@ func (s *service) fetchAndPublish(ctx context.Context, now time.Time) error {
 	defer s.setTags(tags)
 
 	if err := s.acct.Cooldown(); err != nil {
-		return errors.Join(append(errs, err)...)
+		return errors.Join(append(errs, err, s.setLoginRequired(s.credentials() == ""))...)
 	}
 
 	reports, err := latest(ctx, s.fetcher, tags, now)
-	needed := loginNeeded(err) || s.credentials() == ""
-	errs = append(errs, err, s.setLoginRequired(needed))
+	errs = append(errs, err, s.setLoginRequired(s.credentials() == ""))
 
 	for _, t := range tags {
 		if r := reports[t.name]; r != nil {

@@ -29,5 +29,5 @@ MQTT_PASSWORD=$(bashio::services mqtt "password")
 export MQTT_HOST MQTT_PORT MQTT_USER MQTT_PASSWORD
 
 go-findmy serve &
-# Either process dying stops the add-on, so Supervisor shows it instead of a half-working add-on.
+# Supervisor shows a stopped add-on, a half-working one looks healthy.
 wait -n
