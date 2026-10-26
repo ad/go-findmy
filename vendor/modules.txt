@@ -1,6 +1,17 @@
-# github.com/AlanQuatermain/go-gcm v0.0.0-20121029204122-c73ce2690a7f
-## explicit
-github.com/AlanQuatermain/go-gcm
-# github.com/google/uuid v1.5.0
-## explicit
-github.com/google/uuid
+# github.com/eclipse/paho.mqtt.golang v1.5.1
+## explicit; go 1.24.0
+github.com/eclipse/paho.mqtt.golang
+github.com/eclipse/paho.mqtt.golang/packets
+# github.com/gorilla/websocket v1.5.3
+## explicit; go 1.12
+github.com/gorilla/websocket
+# golang.org/x/net v0.44.0
+## explicit; go 1.24.0
+golang.org/x/net/internal/socks
+golang.org/x/net/proxy
+# golang.org/x/sync v0.17.0
+## explicit; go 1.24.0
+golang.org/x/sync/semaphore
+# howett.net/plist v1.0.1
+## explicit; go 1.12
+howett.net/plist

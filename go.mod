@@ -1,8 +1,14 @@
 module github.com/ad/go-findmy
 
-go 1.22.1
+go 1.27
 
 require (
-	github.com/AlanQuatermain/go-gcm v0.0.0-20121029204122-c73ce2690a7f
-	github.com/google/uuid v1.5.0
+	github.com/eclipse/paho.mqtt.golang v1.5.1
+	howett.net/plist v1.0.1
+)
+
+require (
+	github.com/gorilla/websocket v1.5.3 // indirect
+	golang.org/x/net v0.44.0 // indirect
+	golang.org/x/sync v0.17.0 // indirect
 )
