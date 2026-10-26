@@ -18,7 +18,7 @@ import (
 const ingressProxy = "172.30.32.2"
 
 type Login interface {
-	SignIn(ctx context.Context, appleID, password string) (needCode bool, err error)
+	SignIn(ctx context.Context, appleID, password string, sms bool) (needCode bool, err error)
 	SubmitCode(ctx context.Context, code string) error
 }
 
@@ -52,12 +52,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && r.URL.Path == "/":
 		s.render(w, http.StatusOK, "")
 	case r.Method == http.MethodPost && r.URL.Path == "/login":
-		needCode, err := s.Login.SignIn(r.Context(), r.FormValue("apple_id"), r.FormValue("password"))
+		needCode, err := s.Login.SignIn(r.Context(), r.FormValue("apple_id"), r.FormValue("password"), r.FormValue("sms") != "")
 		switch {
 		case err != nil:
 			s.render(w, http.StatusBadRequest, "Login failed: "+err.Error())
 		case needCode:
-			s.render(w, http.StatusOK, "Enter the code from your trusted device.")
+			s.render(w, http.StatusOK, "Enter the code from your trusted device or the SMS.")
 		default:
 			s.render(w, http.StatusOK, "Signed in.")
 		}
@@ -115,6 +115,7 @@ var page = template.Must(template.New("page").Parse(`<!doctype html>
 <title>Find My</title>
 <style>body{font-family:sans-serif;max-width:40rem;margin:1rem auto;padding:0 1rem}
 form{margin:1rem 0}input,textarea{display:block;width:100%;margin:.3rem 0;box-sizing:border-box}
+label{display:block;margin:.3rem 0}label input{display:inline;width:auto}
 .warn{color:#b00}td,th{padding:.2rem .5rem;text-align:left}</style></head><body>
 <h1>Find My</h1>
 {{with .Message}}<p><b>{{.}}</b></p>{{end}}
@@ -129,7 +130,8 @@ form{margin:1rem 0}input,textarea{display:block;width:100%;margin:.3rem 0;box-si
 {{else}}<tr><td colspan="4">No tags yet.</td></tr>{{end}}</table>
 <h2>Apple ID</h2>
 <form method="post" action="login"><input name="apple_id" type="email" placeholder="Apple ID" autocomplete="username" required>
-<input name="password" type="password" placeholder="Password" autocomplete="current-password" required><button>Sign in</button></form>
+<input name="password" type="password" placeholder="Password" autocomplete="current-password" required>
+<label><input name="sms" type="checkbox"> Code by SMS instead of a trusted device</label><button>Sign in</button></form>
 <form method="post" action="code"><input name="code" inputmode="numeric" placeholder="2FA code" autocomplete="one-time-code" required><button>Submit code</button></form>
 <h2>Import AirTag JSON</h2>
 <form method="post" action="import"><textarea name="accessory" rows="8" placeholder="FindMy.py / export-findmy accessory JSON" required></textarea><button>Import</button></form>

@@ -167,10 +167,11 @@ type ingressLogin struct {
 
 	mu      sync.Mutex
 	pending *icloud.SecondFactor
+	sms     bool
 	phoneID int64
 }
 
-func (l *ingressLogin) SignIn(ctx context.Context, appleID, password string) (bool, error) {
+func (l *ingressLogin) SignIn(ctx context.Context, appleID, password string, sms bool) (bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.pending = nil
@@ -189,10 +190,11 @@ func (l *ingressLogin) SignIn(ctx context.Context, appleID, password string) (bo
 		l.signedIn()
 		return false, nil
 	}
-	if sf.TrustedDevice {
-		err = sf.RequestTrustedDeviceCode(ctx)
-	} else {
+	l.sms = sms || !sf.TrustedDevice
+	if l.sms {
 		err = l.requestSMS(ctx, sf)
+	} else {
+		err = sf.RequestTrustedDeviceCode(ctx)
 	}
 	if err != nil {
 		return false, err
@@ -220,10 +222,10 @@ func (l *ingressLogin) SubmitCode(ctx context.Context, code string) error {
 		return errors.New("no sign-in waits for a code, sign in first")
 	}
 	var err error
-	if l.pending.TrustedDevice {
-		err = l.pending.SubmitTrustedDeviceCode(ctx, code)
-	} else {
+	if l.sms {
 		err = l.pending.SubmitSMSCode(ctx, l.phoneID, code)
+	} else {
+		err = l.pending.SubmitTrustedDeviceCode(ctx, code)
 	}
 	if err == nil {
 		l.pending = nil

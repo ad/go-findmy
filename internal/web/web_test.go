@@ -18,11 +18,11 @@ import (
 
 type fakeLogin struct {
 	appleID, password, code string
-	needCode                bool
+	needCode, sms           bool
 }
 
-func (l *fakeLogin) SignIn(_ context.Context, appleID, password string) (bool, error) {
-	l.appleID, l.password = appleID, password
+func (l *fakeLogin) SignIn(_ context.Context, appleID, password string, sms bool) (bool, error) {
+	l.appleID, l.password, l.sms = appleID, password, sms
 	return l.needCode, nil
 }
 
@@ -161,5 +161,20 @@ func TestLoginThenCode(t *testing.T) {
 	w = do(s, http.MethodPost, "/code", url.Values{"code": {"123456"}})
 	if w.Code != http.StatusOK || l.code != "123456" {
 		t.Errorf("good code: status %d, code %q", w.Code, l.code)
+	}
+}
+
+func TestLoginCanAskForSMS(t *testing.T) {
+	s, l := newServer(t)
+	if !strings.Contains(do(s, http.MethodGet, "/", nil).Body.String(), `name="sms"`) {
+		t.Error("login form has no SMS choice")
+	}
+	do(s, http.MethodPost, "/login", url.Values{"apple_id": {"me@example.com"}, "password": {"pw"}})
+	if l.sms {
+		t.Error("SMS asked without the box ticked")
+	}
+	do(s, http.MethodPost, "/login", url.Values{"apple_id": {"me@example.com"}, "password": {"pw"}, "sms": {"on"}})
+	if !l.sms {
+		t.Error("SMS not asked with the box ticked")
 	}
 }

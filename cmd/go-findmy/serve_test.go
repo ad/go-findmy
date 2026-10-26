@@ -180,7 +180,7 @@ func TestIngressLoginDoesNotProvisionDuringCooldown(t *testing.T) {
 	provisioned := 0
 	l := &ingressLogin{acct: acct, provision: func() (bool, error) { provisioned++; return true, nil }}
 
-	_, err := l.SignIn(context.Background(), "me@example.com", "pw")
+	_, err := l.SignIn(context.Background(), "me@example.com", "pw", false)
 	if !errors.Is(err, icloud.ErrCooldown) || provisioned != 0 {
 		t.Errorf("err %v, %d provisions; want ErrCooldown and none", err, provisioned)
 	}
@@ -194,10 +194,10 @@ func TestFailedProvisionCoolsDownTheNextSignIn(t *testing.T) {
 	provisioned := 0
 	l := &ingressLogin{acct: acct, provision: func() (bool, error) { provisioned++; return false, errors.New("anisette: POST /provision: 500") }}
 
-	if _, err := l.SignIn(context.Background(), "me@example.com", "pw"); err == nil {
+	if _, err := l.SignIn(context.Background(), "me@example.com", "pw", false); err == nil {
 		t.Fatal("sign-in with a failed provision succeeded")
 	}
-	if _, err := l.SignIn(context.Background(), "me@example.com", "pw"); !errors.Is(err, icloud.ErrCooldown) || provisioned != 1 {
+	if _, err := l.SignIn(context.Background(), "me@example.com", "pw", false); !errors.Is(err, icloud.ErrCooldown) || provisioned != 1 {
 		t.Errorf("second sign-in err %v, %d provisions; want ErrCooldown and 1", err, provisioned)
 	}
 }
