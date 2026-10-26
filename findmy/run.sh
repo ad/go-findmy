@@ -23,6 +23,10 @@ mkdir -p /data/keys
 chmod 700 /data/keys
 
 "$OSFE/.venv/bin/python" /opt/anisette_sidecar.py serve --state /data/anisette --osfe "$OSFE" &
+for _ in $(seq 30); do
+  curl -sf http://127.0.0.1:6969/health >/dev/null && break
+  sleep 1
+done
 
 MQTT_HOST=$(bashio::services mqtt "host")
 MQTT_PORT=$(bashio::services mqtt "port")

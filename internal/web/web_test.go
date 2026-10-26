@@ -131,6 +131,17 @@ func TestImportRejectsInvalidAccessory(t *testing.T) {
 	}
 }
 
+func TestImportRefusesNamesTakenForCredentials(t *testing.T) {
+	s, _ := newServer(t)
+	w := do(s, http.MethodPost, "/import", url.Values{"accessory": {accessoryJSON(t, "auth")}})
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status %d, want 400", w.Code)
+	}
+	if entries, _ := os.ReadDir(s.KeysDir); len(entries) != 0 {
+		t.Errorf("files written: %v", entries)
+	}
+}
+
 func TestLoginThenCode(t *testing.T) {
 	s, l := newServer(t)
 	l.needCode = true

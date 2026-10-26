@@ -1,7 +1,7 @@
 ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-debian:bookworm
 
-# Supervisor builds with findmy/ as the context, so the sources come from the release tag.
-# Local build from a checkout: docker build --build-context src=. findmy
+# Supervisor builds with findmy/ as the context, so the sources come from the release tag;
+# a local checkout replaces the src stage with --build-context src=.
 FROM golang:1.27-bookworm AS clone
 ARG BUILD_VERSION
 RUN git clone --depth 1 --branch "v${BUILD_VERSION}" https://github.com/ad/go-findmy /src

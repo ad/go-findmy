@@ -11,7 +11,7 @@ Shows AirTags and OpenHaystack tags in Home Assistant as `device_tracker` entiti
 
 1. The add-on downloads iTunes 12.8.3 from Apple once, extracts CoreADI into `/data/coreadi` and deletes the installer.
 2. It provisions an emulated Mac in `/data/anisette`. Apple sees a new Mac on your account.
-3. Open the add-on panel. Sign in with your Apple ID and enter the 2FA code.
+3. Sign in with your Apple ID and enter the 2FA code in the add-on panel. Until sign-in is wired in, put `dsid` and `searchPartyToken` into `/data/keys/auth.json` by hand.
 4. Import each AirTag as JSON in FindMy.py / export-findmy format. OpenHaystack `.keys` files go into `/data/keys`.
 
 ## Polling

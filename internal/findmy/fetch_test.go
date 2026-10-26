@@ -334,6 +334,40 @@ func TestFetchRejectsBadAppleStatus(t *testing.T) {
 	}
 }
 
+func TestFetchAccessoryRetriesSameBatchesAfterError(t *testing.T) {
+	v := loadVectors(t)
+	a := loadAccessory(t, v.FreshAccessory)
+	now := mustTime(t, v.Batches.Now)
+	newest := a.Batches(now)[0].Primary[0].ID
+
+	fail := true
+	var firstIDs []string
+	f, _ := newTestFetcher(t, func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Fetch []struct {
+				PrimaryIDs []string `json:"primaryIds"`
+			} `json:"fetch"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		firstIDs = append(firstIDs, body.Fetch[0].PrimaryIDs[0])
+		if fail {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		io.WriteString(w, `{"acsnLocations":{"statusCode":"200","locationPayload":[]}}`)
+	})
+	if _, err := f.LatestAccessory(context.Background(), a, now); err == nil {
+		t.Fatal("no error from HTTP 500")
+	}
+	fail, firstIDs = false, nil
+	if _, err := f.LatestAccessory(context.Background(), a, now); err != nil {
+		t.Fatal(err)
+	}
+	if len(firstIDs) == 0 || firstIDs[0] != newest {
+		t.Errorf("after an error the scan moved on instead of retrying the newest batch")
+	}
+}
+
 func TestFetchAccessoryCapsRequestsAndResumesNextPoll(t *testing.T) {
 	v := loadVectors(t)
 	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)

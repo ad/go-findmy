@@ -69,12 +69,13 @@ func (s *service) wait(interval time.Duration, now time.Time) time.Duration {
 }
 
 func (s *service) poll(ctx context.Context, now time.Time) {
+	// Written first so that a crash mid-poll still holds back the next start.
+	if err := os.WriteFile(filepath.Join(s.dataDir, lastPollFile), []byte(now.Format(time.RFC3339)), 0o600); err != nil {
+		log.Print(err)
+	}
 	err := s.fetchAndPublish(ctx, now)
 	if err != nil {
 		log.Print(err)
-	}
-	if werr := os.WriteFile(filepath.Join(s.dataDir, lastPollFile), []byte(now.Format(time.RFC3339)), 0o600); werr != nil {
-		log.Print(werr)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

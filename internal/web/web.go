@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ad/go-findmy/internal/findmy"
@@ -81,6 +82,10 @@ func (s *Server) importAccessory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := ha.ID(a.Identifier()) + ".json"
+	if strings.HasSuffix(name, "auth.json") {
+		s.render(w, http.StatusBadRequest, "Import failed: identifier "+a.Identifier()+" collides with the credentials file")
+		return
+	}
 	if err := a.Save(filepath.Join(s.KeysDir, name)); err != nil {
 		log.Printf("import %s: %v", name, err)
 		s.render(w, http.StatusInternalServerError, "Import failed: "+err.Error())

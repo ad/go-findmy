@@ -112,7 +112,6 @@ func (f *Fetcher) LatestAccessory(ctx context.Context, a *Accessory, now time.Ti
 	id := a.Identifier()
 	batches := a.Batches(now)
 	from := f.scanFrom[id] % len(batches)
-	f.scanFrom[id] = from + MaxAccessoryRequests
 	for _, b := range batches[from:min(from+MaxAccessoryRequests, len(batches))] {
 		keys := append(append([]Key(nil), b.Primary...), b.Secondary...)
 		reports, err := f.fetch(ctx, []fetchEntry{newEntry(b.Primary, b.Secondary, now)}, keys)
@@ -131,6 +130,7 @@ func (f *Fetcher) LatestAccessory(ctx context.Context, a *Accessory, now time.Ti
 			return latest, nil
 		}
 	}
+	f.scanFrom[id] = from + MaxAccessoryRequests
 	return nil, nil
 }
 
