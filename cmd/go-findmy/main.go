@@ -16,8 +16,10 @@ func main() {
 		keygen()
 	case "fetch":
 		fetch()
+	case "login":
+		login(len(os.Args) > 2 && os.Args[2] == "sms")
 	default:
-		fmt.Fprintln(os.Stderr, "usage: go-findmy keygen|fetch")
+		fmt.Fprintln(os.Stderr, "usage: go-findmy keygen|login [sms]|fetch")
 		os.Exit(2)
 	}
 }

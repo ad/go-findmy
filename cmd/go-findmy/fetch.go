@@ -13,6 +13,7 @@ import (
 
 	"github.com/ad/go-findmy/internal/anisette"
 	"github.com/ad/go-findmy/internal/findmy"
+	"github.com/ad/go-findmy/internal/icloud"
 )
 
 const (
@@ -20,15 +21,6 @@ const (
 	authFile    = "auth.json"
 	anisetteURL = "http://127.0.0.1:6969"
 )
-
-type auth struct {
-	DSID             string `json:"dsid"`
-	SearchPartyToken string `json:"searchPartyToken"`
-}
-
-func (a auth) SearchPartyAuth() (string, string, error) {
-	return a.DSID, a.SearchPartyToken, nil
-}
 
 type tag struct {
 	name string
@@ -84,18 +76,13 @@ func fetch() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(keysDir, authFile))
+	sc := anisette.New(anisetteURL)
+	acct, err := icloud.Open(accountDir, sc)
 	if err != nil {
 		log.Fatal(err)
 	}
-	var a auth
-	if err := json.Unmarshal(data, &a); err != nil {
-		log.Fatalf("%s: %v", authFile, err)
-	}
 
-	f := findmy.NewFetcher(anisette.New(anisetteURL), a, func(context.Context) error {
-		return fmt.Errorf("token in %s rejected, refresh it", authFile)
-	})
+	f := findmy.NewFetcher(sc, acct, acct.Relogin)
 	ctx := context.Background()
 	now := time.Now()
 	out := map[string]*findmy.Report{}

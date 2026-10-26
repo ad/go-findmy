@@ -1,0 +1,11 @@
+# github.com/Laky-64/appleservices v1.0.15
+## explicit; go 1.26
+github.com/Laky-64/appleservices/gsa
+github.com/Laky-64/appleservices/internal/srp
+# github.com/Laky-64/http v1.0.8
+## explicit; go 1.20
+github.com/Laky-64/http
+github.com/Laky-64/http/types
+# howett.net/plist v1.0.1
+## explicit; go 1.12
+howett.net/plist

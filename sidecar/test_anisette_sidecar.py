@@ -111,6 +111,18 @@ class SidecarTest(unittest.TestCase):
         FakeResyncer.result = "refused"
         self.assertEqual(self.call("POST", "/resync"), (502, {"result": "refused"}))
 
+    def test_provision_on_empty_state_then_headers_work(self):
+        self.assertEqual(self.call("POST", "/provision"), (200, {"result": "provisioned"}))
+        self.assertTrue(self.sidecar.provisioned())
+        self.assertEqual(self.call("GET", "/headers")[0], 200)
+
+    def test_provision_of_a_provisioned_machine_never_provisions_again(self):
+        self.provision()
+        self.call("GET", "/headers")
+        built = FakeMachine.built
+        self.assertEqual(self.call("POST", "/provision"), (200, {"result": "exists"}))
+        self.assertEqual(FakeMachine.built, built)
+
 
 class ProvisionTest(unittest.TestCase):
     def setUp(self):
