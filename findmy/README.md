@@ -11,7 +11,7 @@ Shows AirTags and OpenHaystack tags in Home Assistant as `device_tracker` entiti
 
 1. The add-on downloads iTunes 12.8.3 from Apple once, extracts CoreADI into `/data/coreadi` and deletes the installer.
 2. Open the add-on panel and sign in with your Apple ID. Right before the sign-in the add-on provisions an emulated Mac in `/data/anisette`; Apple sees a new Mac on your account.
-3. Enter the 2FA code. A trusted Apple device gets it; without one, the first trusted phone number gets an SMS.
+3. Enter the 2FA code. A trusted Apple device gets it. With "Code by SMS" ticked, or without a trusted device, the first trusted phone number gets an SMS.
 4. Import each AirTag as JSON in FindMy.py / export-findmy format, see "AirTag keys". OpenHaystack `.keys` files go into `/data/keys`.
 
 ## AirTag keys
@@ -37,7 +37,7 @@ The first run builds the image and downloads iTunes 12.8.3 from Apple for CoreAD
 
 - `poll_interval` is in minutes, 15 at least. Polling more often raises the risk of an Apple ban.
 - Each AirTag costs at most 3 requests per poll. A tag without a recent alignment is searched across several polls.
-- After Apple rejects the token, the add-on tries one relogin with the saved password. If that fails, it stops polling and turns on `binary_sensor.find_my_login_required`. Sign in again in the panel.
+- After Apple rejects the token, the add-on tries one relogin with the saved password. If Apple refuses it, the add-on stops polling and turns on `binary_sensor.find_my_login_required`. Sign in again in the panel. Any other relogin failure pauses polling for 45 minutes, then the relogin is tried again.
 - After Apple refuses a sign-in (wrong password, locked Apple ID, HTTP 429), nothing is sent to Apple for 45 minutes. The panel shows when that ends.
 
 ## Backups
