@@ -152,6 +152,18 @@ func TestPollSendsNothingWhileAccountNeedsLogin(t *testing.T) {
 	if fx.requests != 0 || fx.pub["findmy/login_required"] != "ON" {
 		t.Errorf("%d requests, login_required %q; want 0 and ON", fx.requests, fx.pub["findmy/login_required"])
 	}
+	if !strings.Contains(fx.s.Status().NeedLogin, "Apple refused the relogin") {
+		t.Errorf("status does not say why: %+v", fx.s.Status())
+	}
+}
+
+func TestSignInClearsLoginRequiredAtOnce(t *testing.T) {
+	fx := newPollFixture(t, signedIn)
+	fx.s.setLoginRequired(true)
+	fx.s.signedIn()
+	if fx.s.Status().LoginRequired || fx.pub["findmy/login_required"] != "OFF" {
+		t.Errorf("status %+v, login_required %q", fx.s.Status(), fx.pub["findmy/login_required"])
+	}
 }
 
 func TestIngressLoginDoesNotProvisionDuringCooldown(t *testing.T) {

@@ -59,6 +59,9 @@ func (s *service) Status() web.Status {
 	if err := s.acct.Cooldown(); err != nil {
 		st.Cooldown = err.Error()
 	}
+	if _, _, err := s.acct.SearchPartyAuth(); err != nil {
+		st.NeedLogin = err.Error()
+	}
 	return st
 }
 
@@ -103,6 +106,7 @@ func (s *service) fetchAndPublish(ctx context.Context, now time.Time) error {
 	}
 	defer s.setTags(tags)
 
+	// Account keeps a token whose relogin failed without an Apple refusal; this stops resending it.
 	if s.rejected != "" && s.rejected == s.credentials() {
 		return errors.Join(append(errs, s.setLoginRequired(true), errors.New("Apple rejected the token, sign in again"))...)
 	}
@@ -124,13 +128,18 @@ func (s *service) fetchAndPublish(ctx context.Context, now time.Time) error {
 	return errors.Join(errs...)
 }
 
-// Account keeps a token whose relogin failed without an Apple refusal; this stops resending it.
 func (s *service) credentials() string {
 	dsid, token, err := s.acct.SearchPartyAuth()
 	if err != nil {
 		return ""
 	}
 	return dsid + ":" + token
+}
+
+func (s *service) signedIn() {
+	if err := s.setLoginRequired(false); err != nil {
+		log.Print(err)
+	}
 }
 
 func (s *service) setLoginRequired(required bool) error {
@@ -160,6 +169,7 @@ func (t tag) haTag() ha.Tag {
 type ingressLogin struct {
 	acct      *icloud.Account
 	provision func() (fresh bool, err error)
+	signedIn  func()
 
 	mu      sync.Mutex
 	pending *icloud.SecondFactor
@@ -178,8 +188,12 @@ func (l *ingressLogin) SignIn(ctx context.Context, appleID, password string) (bo
 		return false, err
 	}
 	sf, err := l.acct.Login(ctx, appleID, password)
-	if err != nil || sf == nil {
+	if err != nil {
 		return false, err
+	}
+	if sf == nil {
+		l.signedIn()
+		return false, nil
 	}
 	if sf.TrustedDevice {
 		err = sf.RequestTrustedDeviceCode(ctx)
@@ -219,6 +233,7 @@ func (l *ingressLogin) SubmitCode(ctx context.Context, code string) error {
 	}
 	if err == nil {
 		l.pending = nil
+		l.signedIn()
 	}
 	return err
 }
@@ -255,7 +270,7 @@ func serve() {
 		log.Fatal(err)
 	}
 	s := newService(filepath.Join(addonDataDir, keysDir), addonDataDir, findmy.NewFetcher(sc, acct, acct.Relogin), acct, client)
-	login := &ingressLogin{acct: acct, provision: sc.Provision}
+	login := &ingressLogin{acct: acct, provision: sc.Provision, signedIn: s.signedIn}
 	go func() {
 		log.Fatal(http.ListenAndServe(ingressAddr, &web.Server{Login: login, KeysDir: s.keysDir, Status: s.Status}))
 	}()

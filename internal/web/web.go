@@ -30,6 +30,7 @@ type TagStatus struct {
 type Status struct {
 	LoginRequired bool
 	Cooldown      string
+	NeedLogin     string
 	LastPoll      time.Time
 	LastError     string
 	Tags          []TagStatus
@@ -118,6 +119,7 @@ form{margin:1rem 0}input,textarea{display:block;width:100%;margin:.3rem 0;box-si
 <h1>Find My</h1>
 {{with .Message}}<p><b>{{.}}</b></p>{{end}}
 {{if .LoginRequired}}<p class="warn">Login required.</p>{{end}}
+{{with .NeedLogin}}<p class="warn">{{.}}</p>{{end}}
 {{with .Cooldown}}<p class="warn">Nothing is sent to Apple: {{.}}</p>{{end}}
 <p>Last poll: {{if .LastPoll.IsZero}}not yet{{else}}{{.LastPoll.Format "2006-01-02 15:04:05 MST"}}{{end}}</p>
 {{with .LastError}}<p class="warn">Last error: {{.}}</p>{{end}}
