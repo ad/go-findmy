@@ -37,6 +37,7 @@ type Fetcher struct {
 	HTTP        *http.Client
 	URL         string
 	Sleep       func(context.Context, time.Duration) error
+	scanFrom    map[string]int
 }
 
 func NewFetcher(a Anisette, c Credentials, relogin func(context.Context) error) *Fetcher {
@@ -101,8 +102,18 @@ func (f *Fetcher) LatestStatic(ctx context.Context, keys []Key, now time.Time) (
 	return out, nil
 }
 
+// An unaligned accessory spans up to ~120 batches; fetching all of them every poll risks a ban.
+const MaxAccessoryRequests = 3
+
 func (f *Fetcher) LatestAccessory(ctx context.Context, a *Accessory, now time.Time) (*Report, error) {
-	for _, b := range a.Batches(now) {
+	if f.scanFrom == nil {
+		f.scanFrom = map[string]int{}
+	}
+	id := a.Identifier()
+	batches := a.Batches(now)
+	from := f.scanFrom[id] % len(batches)
+	f.scanFrom[id] = from + MaxAccessoryRequests
+	for _, b := range batches[from:min(from+MaxAccessoryRequests, len(batches))] {
 		keys := append(append([]Key(nil), b.Primary...), b.Secondary...)
 		reports, err := f.fetch(ctx, []fetchEntry{newEntry(b.Primary, b.Secondary, now)}, keys)
 		if err != nil {
@@ -116,6 +127,7 @@ func (f *Fetcher) LatestAccessory(ctx context.Context, a *Accessory, now time.Ti
 			}
 		}
 		if latest != nil {
+			delete(f.scanFrom, id)
 			return latest, nil
 		}
 	}

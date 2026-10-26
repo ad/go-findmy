@@ -16,8 +16,10 @@ func main() {
 		keygen()
 	case "fetch":
 		fetch()
+	case "serve":
+		serve()
 	default:
-		fmt.Fprintln(os.Stderr, "usage: go-findmy keygen|fetch")
+		fmt.Fprintln(os.Stderr, "usage: go-findmy keygen|fetch|serve")
 		os.Exit(2)
 	}
 }

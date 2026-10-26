@@ -97,6 +97,18 @@ func ParseAccessory(data []byte) (*Accessory, error) {
 	return a, nil
 }
 
+func (a *Accessory) Identifier() string { return a.text("identifier") }
+
+func (a *Accessory) Name() string { return a.text("name") }
+
+func (a *Accessory) Model() string { return a.text("model") }
+
+func (a *Accessory) text(field string) string {
+	var s string
+	json.Unmarshal(a.raw[field], &s)
+	return s
+}
+
 func (a *Accessory) UpdateAlignment(t time.Time, i int) {
 	if t.Before(a.alignmentDate) || i < a.alignmentIndex {
 		return

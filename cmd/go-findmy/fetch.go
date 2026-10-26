@@ -84,21 +84,46 @@ func fetch() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(keysDir, authFile))
+	a, err := readAuth(keysDir)
 	if err != nil {
 		log.Fatal(err)
 	}
-	var a auth
-	if err := json.Unmarshal(data, &a); err != nil {
-		log.Fatalf("%s: %v", authFile, err)
+
+	f := findmy.NewFetcher(anisette.New(anisetteURL), a, relogin)
+	out, err := latest(context.Background(), f, tags, time.Now())
+	if errors.Is(err, findmy.ErrUnauthorized) {
+		log.Fatal(err)
+	}
+	if err != nil {
+		log.Print(err)
 	}
 
-	f := findmy.NewFetcher(anisette.New(anisetteURL), a, func(context.Context) error {
-		return fmt.Errorf("token in %s rejected, refresh it", authFile)
-	})
-	ctx := context.Background()
-	now := time.Now()
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(out); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func readAuth(dir string) (auth, error) {
+	var a auth
+	data, err := os.ReadFile(filepath.Join(dir, authFile))
+	if err != nil {
+		return a, err
+	}
+	if err := json.Unmarshal(data, &a); err != nil {
+		return a, fmt.Errorf("%s: %w", authFile, err)
+	}
+	return a, nil
+}
+
+func relogin(context.Context) error {
+	return fmt.Errorf("token in %s rejected, refresh it", authFile)
+}
+
+func latest(ctx context.Context, f *findmy.Fetcher, tags []tag, now time.Time) (map[string]*findmy.Report, error) {
 	out := map[string]*findmy.Report{}
+	var errs []error
 
 	var static []findmy.Key
 	for _, t := range tags {
@@ -107,7 +132,10 @@ func fetch() {
 		}
 	}
 	reports, err := f.LatestStatic(ctx, static, now)
-	checkFetch(err)
+	if errors.Is(err, findmy.ErrUnauthorized) {
+		return out, err
+	}
+	errs = append(errs, err)
 	for _, t := range tags {
 		if t.key == nil {
 			continue
@@ -123,27 +151,16 @@ func fetch() {
 			continue
 		}
 		r, err := f.LatestAccessory(ctx, t.acc, now)
-		checkFetch(err)
+		if errors.Is(err, findmy.ErrUnauthorized) {
+			return out, err
+		}
+		errs = append(errs, err)
 		out[t.name] = r
 		if r != nil {
 			if err := t.acc.Save(t.path); err != nil {
-				log.Printf("%s: saving alignment: %v", t.name, err)
+				errs = append(errs, fmt.Errorf("%s: saving alignment: %w", t.name, err))
 			}
 		}
 	}
-
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(out); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func checkFetch(err error) {
-	if errors.Is(err, findmy.ErrUnauthorized) {
-		log.Fatal(err)
-	}
-	if err != nil {
-		log.Print(err)
-	}
+	return out, errors.Join(errs...)
 }

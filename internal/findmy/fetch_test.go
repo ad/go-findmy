@@ -333,3 +333,66 @@ func TestFetchRejectsBadAppleStatus(t *testing.T) {
 		t.Fatal("no error")
 	}
 }
+
+func TestFetchAccessoryCapsRequestsAndResumesNextPoll(t *testing.T) {
+	v := loadVectors(t)
+	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	var raw map[string]any
+	if err := json.Unmarshal(v.FreshAccessory, &raw); err != nil {
+		t.Fatal(err)
+	}
+	raw["paired_at"] = now.Add(-30 * 24 * time.Hour).Format(time.RFC3339)
+	raw["alignment_date"], raw["alignment_index"] = nil, nil
+	data, _ := json.Marshal(raw)
+	a := loadAccessory(t, data)
+
+	batches := a.Batches(now)
+	if len(batches) < 2*MaxAccessoryRequests {
+		t.Fatalf("%d batches, the test needs %d", len(batches), 2*MaxAccessoryRequests)
+	}
+	target := batches[MaxAccessoryRequests+1].Primary[0]
+
+	var firstIDs []string
+	f, _ := newTestFetcher(t, func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Fetch []struct {
+				PrimaryIDs []string `json:"primaryIds"`
+			} `json:"fetch"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		firstIDs = append(firstIDs, body.Fetch[0].PrimaryIDs[0])
+		if !slices.Contains(body.Fetch[0].PrimaryIDs, target.ID) {
+			io.WriteString(w, `{"acsnLocations":{"statusCode":"200","locationPayload":[]}}`)
+			return
+		}
+		io.WriteString(w, payloadResponse(target.ID, sealReport(t, target.Private, now.Add(-time.Hour), 1)))
+	})
+	ctx := context.Background()
+
+	got, err := f.LatestAccessory(ctx, a, now)
+	if err != nil || got != nil {
+		t.Fatalf("poll 1: %+v, %v; want no report", got, err)
+	}
+	want := []string{batches[0].Primary[0].ID, batches[1].Primary[0].ID, batches[2].Primary[0].ID}
+	if !slices.Equal(firstIDs, want) {
+		t.Fatalf("poll 1 sent batches %v, want the newest %d", firstIDs, MaxAccessoryRequests)
+	}
+
+	firstIDs = nil
+	got, err = f.LatestAccessory(ctx, a, now)
+	if err != nil || got == nil {
+		t.Fatalf("poll 2: %+v, %v; want a report", got, err)
+	}
+	want = []string{batches[3].Primary[0].ID, batches[4].Primary[0].ID}
+	if !slices.Equal(firstIDs, want) {
+		t.Fatalf("poll 2 sent batches %v, want 3 and 4", firstIDs)
+	}
+
+	firstIDs = nil
+	if _, err := f.LatestAccessory(ctx, a, now); err != nil {
+		t.Fatal(err)
+	}
+	if len(firstIDs) == 0 || firstIDs[0] != a.Batches(now)[0].Primary[0].ID {
+		t.Errorf("poll 3 did not restart from the newest batch after a hit")
+	}
+}
