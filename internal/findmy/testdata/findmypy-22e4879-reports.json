@@ -1,0 +1,40 @@
+{
+ "source": "FindMy.py 22e4879426f97c9b0a1a33b22dac34ef0cf3d02f LocationReport.decrypt, scratch gen_reports.py",
+ "private": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c",
+ "id": "/vOKuaTt4YQhx94Ge/rHR9KDiKnuhcZ7CrxlJFsRUzg=",
+ "reports": [
+  {
+   "len": 88,
+   "shared_x_leading_zero": false,
+   "payload": "MISngAIEhJe1g7POwDkQtSemem1UhOz7Jefh+uHzOLiFDkbOHlbqGE5ey0InGholeCN2ebGpwvtGGASpEltFplbSo8i5JdXep/13Nwg9uKzXJJ0isW3o+Q==",
+   "timestamp": 1792307200,
+   "confidence": 2,
+   "latitude": 55.7512345,
+   "longitude": 37.6178901,
+   "accuracy": 17,
+   "status": 32
+  },
+  {
+   "len": 89,
+   "shared_x_leading_zero": false,
+   "payload": "MISrBKoDBISXtYOzzsA5ELUnpnptVITs+yXn4frh8zi4hQ5Gzh5W6hhOXstCJxoaJXgjdnmxqcL7RhgEqRJbj0ynv2OllF7z+sLz+o4O2mfm2LsehACTKT8=",
+   "timestamp": 1792308100,
+   "confidence": 3,
+   "latitude": -33.8688012,
+   "longitude": -70.456789,
+   "accuracy": 55,
+   "status": 4
+  },
+  {
+   "len": 88,
+   "shared_x_leading_zero": true,
+   "payload": "MISuiAEE81rKc9dYuYE+/tgQAJQm7UCF4O0epf6cEJOuYRlJoyvVf4fgiwDccMkcM2TaQ5TQ4eVbarozgw7Km+Ck0F9Kxz1ea/09ckoBPuOoiDB21kIFCA==",
+   "timestamp": 1792309000,
+   "confidence": 1,
+   "latitude": 40.1234567,
+   "longitude": -74.0098765,
+   "accuracy": 9,
+   "status": 0
+  }
+ ]
+}
