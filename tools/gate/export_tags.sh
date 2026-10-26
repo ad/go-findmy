@@ -3,8 +3,7 @@ set -eu
 usage="usage: tools/gate/export_tags.sh login [--2fa sms] | keys OUT_DIR"
 step="${1:?$usage}"
 shift
-cd "$(dirname "$0")"
-docker image inspect go-findmy-gate >/dev/null 2>&1 || docker build -t go-findmy-gate .
+docker image inspect go-findmy-gate >/dev/null 2>&1 || docker build -t go-findmy-gate "$(dirname "$0")"
 
 run() {
   docker run --rm -it \
@@ -32,9 +31,13 @@ keys)
   chmod 700 "$out"
   out=$(cd "$out" && pwd)
   run -v "$out":/out go-findmy-gate sh -euc '
-    trap "rm -f /tmp/macadi/export-login.json /out/airtags.json" EXIT
+    trap "rm -f /tmp/macadi/export-login.json" EXIT
     umask 077
-    tools/restored_run.sh /tmp/macadi/export --tags --tags-save /out/airtags.json
+    rm -f /out/airtags.json
+    rc=0
+    # tag_keys.py asks Apple for locations after saving the keys, so a failure may follow the save.
+    tools/restored_run.sh /tmp/macadi/export --tags --tags-save /out/airtags.json || rc=$?
+    [ -f /out/airtags.json ] || exit "$rc"
     .venv/bin/python - <<EOF
 import json, os
 for a in json.load(open("/out/airtags.json")):
@@ -44,6 +47,8 @@ for a in json.load(open("/out/airtags.json")):
         json.dump(a, f, indent=2)
     print("saved", a["name"], "->", os.path.basename(path))
 EOF
+    rm /out/airtags.json
+    exit "$rc"
   '
   ;;
 *)
