@@ -22,22 +22,13 @@ import (
 	"time"
 
 	"github.com/AlanQuatermain/go-gcm"
+	"github.com/ad/go-findmy/internal/findmy"
 	"github.com/google/uuid"
 )
 
 const (
 	ANISETTE_URL = "http://localhost:6969"
 )
-
-type KeyFile struct {
-	PrivateKey    string `json:"private_key"`
-	AdvKey        string `json:"adv_key"`
-	HashedKey     string `json:"hashed_key"`
-	PrivateKeyHex string `json:"private_key_hex"`
-	AdvKeyHex     string `json:"adv_key_hex"`
-	MAC           string `json:"mac"`
-	Payload       string `json:"payload"`
-}
 
 type Auth struct {
 	DSID             string `json:"dsid"`
@@ -80,7 +71,7 @@ type Tag struct {
 	Goog        string  `json:"goog"`
 }
 
-func main() {
+func fetch() {
 	privkeys, err := loadKeysFromFiles()
 	if err != nil {
 		log.Fatal(err)
@@ -348,7 +339,7 @@ func loadKeysFromFiles() (map[string]string, error) {
 				return privkeys, err
 			}
 
-			var keyFile KeyFile
+			var keyFile findmy.KeyFile
 
 			json.Unmarshal(key, &keyFile)
 
