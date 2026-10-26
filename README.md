@@ -15,7 +15,7 @@ go run ./cmd/go-findmy fetch        # reports for every tag in keys/
 go run ./cmd/go-findmy serve        # the add-on's service, expects /data and MQTT_* env
 ```
 
-- `login` and `fetch` need the anisette sidecar on `127.0.0.1:6969`. Start it as `findmy/run.sh` does: `$OSFE/.venv/bin/python sidecar/anisette_sidecar.py serve --state DIR --osfe $OSFE`, with `COREADI_PATH` set and `$OSFE` an os-findmy-e checkout.
+- `login`, `fetch` and `serve` need the anisette sidecar on `127.0.0.1:6969`. Start it as `findmy/run.sh` does: `$OSFE/.venv/bin/python sidecar/anisette_sidecar.py serve --state DIR --osfe $OSFE`, with `COREADI_PATH` set and `$OSFE` an os-findmy-e checkout.
 - `keys/` holds `.keys` files from `keygen` and AirTag JSON files. `fetch` fails until the folder exists.
 
 ## AirTag keys
@@ -25,7 +25,7 @@ AirTag keys are exported once with `tools/gate/export_tags.sh`. Steps and caveat
 ## Secrets
 
 These hold the Apple session or the tags' private keys. Keep them out of git and out of shared places:
-- `account/`: tokens and the password hash from `login`;
+- `account/`: tokens and the password's SHA-256 from `login`, which signs in like the password itself;
 - `keys/`: private keys of all tags;
 - the `export_tags.sh keys` output folder, and the Docker volume `findmy-gate-state` with the emulated Mac and, between `login` and `keys`, the password;
 - the sidecar `--state` folder: the emulated Mac;
