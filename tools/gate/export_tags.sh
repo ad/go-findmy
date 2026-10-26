@@ -1,22 +1,40 @@
 #!/bin/sh
 set -eu
-out="${1:?usage: tools/gate/export_tags.sh OUT_DIR [--2fa sms]}"
+usage="usage: tools/gate/export_tags.sh login [--2fa sms] | keys OUT_DIR"
+step="${1:?$usage}"
 shift
 cd "$(dirname "$0")"
 docker image inspect go-findmy-gate >/dev/null 2>&1 || docker build -t go-findmy-gate .
-mkdir -p "$out"
-chmod 700 "$out"
-out=$(cd "$out" && pwd)
 
-# A fresh machine "export", so the long-lived "gate" machine is never logged in again.
-exec docker run --rm -it \
-  -v findmy-gate-ext:/opt/os-findmy-e/ext \
-  -v findmy-gate-state:/tmp/macadi \
-  -v "$out":/out \
-  go-findmy-gate sh -euc '
-    umask 077
+run() {
+  docker run --rm -it \
+    -v findmy-gate-ext:/opt/os-findmy-e/ext \
+    -v findmy-gate-state:/tmp/macadi \
+    "$@"
+}
+
+case "$step" in
+login)
+  # Its own machine "export", so the long-lived "gate" machine is never logged in again.
+  run go-findmy-gate sh -euc '
+    .venv/bin/python -c "import sys; sys.path.insert(0, \"tools/machoadi\"); import cooldown; cooldown.guard()"
     [ -d ext/itunes/mac ] || .venv/bin/python tools/fetch_mac_coreadi.py
-    tools/login.sh export "$@" --tags --tags-save /out/airtags.json
+    if [ -f /tmp/macadi/export/identity.json ]; then
+      tools/aged_login.sh /tmp/macadi/export "$@"
+    else
+      tools/login.sh export "$@" --save-login /tmp/macadi/export-login.json
+    fi
+  ' sh "$@"
+  ;;
+keys)
+  out="${1:?$usage}"
+  mkdir -p "$out"
+  chmod 700 "$out"
+  out=$(cd "$out" && pwd)
+  run -v "$out":/out go-findmy-gate sh -euc '
+    trap "rm -f /tmp/macadi/export-login.json /out/airtags.json" EXIT
+    umask 077
+    tools/restored_run.sh /tmp/macadi/export --tags --tags-save /out/airtags.json
     .venv/bin/python - <<EOF
 import json, os
 for a in json.load(open("/out/airtags.json")):
@@ -25,6 +43,11 @@ for a in json.load(open("/out/airtags.json")):
     with os.fdopen(fd, "w") as f:
         json.dump(a, f, indent=2)
     print("saved", a["name"], "->", os.path.basename(path))
-os.remove("/out/airtags.json")
 EOF
-  ' sh "$@"
+  '
+  ;;
+*)
+  echo "$usage" >&2
+  exit 2
+  ;;
+esac

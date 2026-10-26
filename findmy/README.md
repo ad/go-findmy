@@ -16,14 +16,17 @@ Shows AirTags and OpenHaystack tags in Home Assistant as `device_tracker` entiti
 
 ## AirTag keys
 
-The add-on does not read AirTag keys from iCloud itself. Export them once on any computer with Docker, from a clone of this repository:
+The add-on does not read AirTag keys from iCloud itself. Export them once on any computer with Docker, from a clone of this repository, in two steps:
 
 ```sh
-tools/gate/export_tags.sh ~/airtags
+tools/gate/export_tags.sh login
+tools/gate/export_tags.sh keys ~/airtags
 ```
 
-- Add `--2fa sms` to get the code by SMS instead of on a trusted device.
-- It asks for the Apple ID, the password and the 2FA code. Then it lists your devices with an escrow record: pick the one whose screen-lock passcode you know and type that passcode.
+- `login` asks for the Apple ID, the password and the 2FA code. Add `--2fa sms` to get the code by SMS instead of on a trusted device. A second `login` reuses the same emulated Mac; Apple may then skip the 2FA code.
+- Run `keys` later, not right after `login`. Reading the keychain costs one more sign-in, and two sign-ins seconds apart got HTTP 429. An hour apart worked.
+- After HTTP 429 both steps refuse to run for 45 minutes.
+- `keys` lists your devices with an escrow record: pick the one whose screen-lock passcode you know and type that passcode. It then deletes the saved login, which holds the password, whatever the outcome.
 - **A wrong passcode is not retried.** Apple limits wrong guesses, so check which device you picked.
 - You get one `<identifier>.json` per AirTag in `~/airtags`, mode 0600. Paste each into the panel's Import form, then delete the folder: the files are the tags' private keys.
 - Nothing is added to the keychain circle. Apple does see one more Mac on the account: remove it from the device list afterwards.
