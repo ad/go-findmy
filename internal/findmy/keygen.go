@@ -6,7 +6,10 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 type KeyFile struct {
@@ -36,17 +39,7 @@ func advertisementTemplate() []byte {
 	return adv
 }
 
-func convertKeyToHex(privateKey *ecdsa.PrivateKey, publicKey *ecdsa.PublicKey) (string, string) {
-	privateKeyBytes := privateKey.D.Bytes()
-	publicKeyBytes := elliptic.Marshal(publicKey.Curve, publicKey.X, publicKey.Y)
-	privateKeyHex := fmt.Sprintf("%x", privateKeyBytes)
-	publicKeyHex := fmt.Sprintf("%x", publicKeyBytes)
-	return privateKeyHex, publicKeyHex
-}
-
-func generateMACAndPayload(publicKey *ecdsa.PublicKey) (string, string) {
-	key := elliptic.Marshal(publicKey.Curve, publicKey.X, publicKey.Y)
-
+func generateMACAndPayload(key []byte) (string, string) {
 	addr := make([]byte, 6)
 	copy(addr, key[:6])
 	addr[0] |= 0b11000000
@@ -59,27 +52,68 @@ func generateMACAndPayload(publicKey *ecdsa.PublicKey) (string, string) {
 }
 
 func NewKeyFile() (KeyFile, error) {
-	privateKey, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
+	for {
+		privateKey, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
+		if err != nil {
+			return KeyFile{}, err
+		}
+		priv, err := privateKey.Bytes()
+		if err != nil {
+			return KeyFile{}, err
+		}
+		kf, err := newKeyFile(priv)
+		if err != nil {
+			return KeyFile{}, err
+		}
+		if !strings.Contains(kf.HashedKey[:7], "/") {
+			return kf, nil
+		}
+	}
+}
+
+func newKeyFile(priv []byte) (KeyFile, error) {
+	k, err := ecdsa.ParseRawPrivateKey(elliptic.P224(), priv)
 	if err != nil {
 		return KeyFile{}, err
 	}
-	publicKey := &privateKey.PublicKey
-
-	privateKeyBytes := privateKey.D.Bytes()
-	publicKeyBytes := elliptic.Marshal(publicKey.Curve, publicKey.X, publicKey.Y)
-
-	privateKeyHex, publicKeyHex := convertKeyToHex(privateKey, publicKey)
-	mac, payload := generateMACAndPayload(publicKey)
-
-	publicKeyHash := sha256.Sum256(publicKeyBytes)
-
+	adv := advKey(k)
+	mac, payload := generateMACAndPayload(adv)
 	return KeyFile{
-		PrivateKey:    base64.StdEncoding.EncodeToString(privateKeyBytes),
-		AdvKey:        base64.StdEncoding.EncodeToString(publicKeyBytes),
-		HashedKey:     base64.StdEncoding.EncodeToString(publicKeyHash[:]),
-		PrivateKeyHex: privateKeyHex,
-		AdvKeyHex:     publicKeyHex,
+		PrivateKey:    base64.StdEncoding.EncodeToString(priv),
+		AdvKey:        base64.StdEncoding.EncodeToString(adv),
+		HashedKey:     hashedKey(adv),
+		PrivateKeyHex: hex.EncodeToString(priv),
+		AdvKeyHex:     hex.EncodeToString(adv),
 		MAC:           mac,
 		Payload:       payload,
 	}, nil
+}
+
+func ReadKeyFile(data []byte) (Key, error) {
+	var kf KeyFile
+	if err := json.Unmarshal(data, &kf); err != nil {
+		return Key{}, err
+	}
+	priv, err := base64.StdEncoding.DecodeString(kf.PrivateKey)
+	if err != nil {
+		return Key{}, fmt.Errorf("keys file: private_key: %w", err)
+	}
+	k, err := ecdsa.ParseRawPrivateKey(elliptic.P224(), priv)
+	if err != nil {
+		return Key{}, fmt.Errorf("keys file: private_key: %w", err)
+	}
+	return Key{ID: hashedKey(advKey(k)), Private: priv}, nil
+}
+
+func advKey(k *ecdsa.PrivateKey) []byte {
+	pub, err := k.PublicKey.Bytes()
+	if err != nil {
+		panic(err)
+	}
+	return pub[1:29]
+}
+
+func hashedKey(adv []byte) string {
+	h := sha256.Sum256(adv)
+	return base64.StdEncoding.EncodeToString(h[:])
 }
