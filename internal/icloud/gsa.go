@@ -64,7 +64,6 @@ func (e *AppleError) Unwrap() error {
 const (
 	bundleAkd       = "com.apple.AuthKit/1 (com.apple.akd/1.0)"
 	bundleAccountsd = "com.apple.AOSKit/282 (com.apple.accountsd/113)"
-	bundleXcode     = "com.apple.AOSKit/282 (com.apple.dt.Xcode/3594.4.19)"
 )
 
 // CFNetwork and Darwin of each macOS release the sidecar may claim; a guess would contradict its client info.
@@ -405,7 +404,7 @@ func (sf *SecondFactor) do(ctx context.Context, method, path string, body []byte
 	req.Header.Set("User-Agent", "Xcode")
 	req.Header.Set("Accept-Language", "en-us")
 	req.Header.Set("X-Apple-Identity-Token", base64.StdEncoding.EncodeToString([]byte(sf.adsid+":"+sf.idms)))
-	req.Header.Set("X-Mme-Client-Info", id.clientInfo(bundleXcode))
+	req.Header.Set("X-Mme-Client-Info", id.clientInfo(bundleAkd))
 	req.Header.Set("X-Apple-App-Info", "com.apple.gs.xcode.auth")
 	req.Header.Set("X-Xcode-Version", "11.2 (11B41)")
 	for k, v := range extra {

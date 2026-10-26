@@ -367,7 +367,7 @@ func TestHSC409AtCompleteIsTrustedDeviceSecondFactor(t *testing.T) {
 	if apple.header("validate", "security-code") != "123456" {
 		t.Errorf("security-code = %q", apple.header("validate", "security-code"))
 	}
-	if ci := apple.header("push", "X-Mme-Client-Info"); ci != "<MacBookPro13,2> <macOS;13.1;22C65> <com.apple.AOSKit/282 (com.apple.dt.Xcode/3594.4.19)>" {
+	if ci := apple.header("push", "X-Mme-Client-Info"); ci != macClientInfo {
 		t.Errorf("2FA client info = %q", ci)
 	}
 	if tok := apple.header("push", "X-Apple-Identity-Token"); tok != "QURTSUQ6SURNUw==" {
