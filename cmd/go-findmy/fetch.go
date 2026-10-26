@@ -20,10 +20,10 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"uuid"
 
 	"github.com/AlanQuatermain/go-gcm"
 	"github.com/ad/go-findmy/internal/findmy"
-	"github.com/google/uuid"
 )
 
 const (
