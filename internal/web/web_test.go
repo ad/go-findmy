@@ -43,6 +43,7 @@ func newServer(t *testing.T) (*Server, *fakeLogin) {
 		Status: func() Status {
 			return Status{
 				LoginRequired: true,
+				Cooldown:      "icloud: cooldown until 2026-10-26T12:45:00Z: the Apple ID is locked, unlock it at iforgot.apple.com",
 				LastPoll:      time.Date(2026, 10, 26, 11, 0, 0, 0, time.UTC),
 				Tags: []TagStatus{
 					{Name: "Keys", Report: &findmy.Report{Latitude: 52.5, Longitude: 13.4, Accuracy: 25}},
@@ -92,7 +93,7 @@ func TestStatusPageShowsLoginNeededAndTags(t *testing.T) {
 	s, _ := newServer(t)
 	w := do(s, http.MethodGet, "/", nil)
 	body := w.Body.String()
-	for _, want := range []string{"Login required", "Keys", "52.5", "Bag", `action="login"`, `action="code"`, `action="import"`} {
+	for _, want := range []string{"Login required", "until 2026-10-26T12:45:00Z", "iforgot.apple.com", "Keys", "52.5", "Bag", `action="login"`, `action="code"`, `action="import"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %q", want)
 		}

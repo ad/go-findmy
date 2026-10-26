@@ -12,13 +12,6 @@ if [ ! -f "$COREADI_PATH" ]; then
   rm -rf "$COREADI_DIR/iTunes12.8.3.dmg" "$COREADI_DIR/ipkg" "$COREADI_DIR/coreadi-pkg/CoreADI.pkg"
 fi
 
-if [ ! -f /data/anisette/identity.json ]; then
-  bashio::log.info "Provisioning the anisette machine"
-  # No exit on failure: the add-on must not retry provisioning against Apple in a restart loop.
-  "$OSFE/.venv/bin/python" /opt/anisette_sidecar.py provision --state /data/anisette --osfe "$OSFE" \
-    || bashio::log.error "Provisioning failed. If /data/anisette is not empty, it must be cleared first."
-fi
-
 mkdir -p /data/keys
 chmod 700 /data/keys
 

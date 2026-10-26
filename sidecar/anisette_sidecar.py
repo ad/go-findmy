@@ -47,6 +47,14 @@ class Sidecar:
             self._machine = resyncer.machine
             return asyncio.run(resyncer.ensure_fresh())
 
+    def provision(self):
+        with self._lock:
+            if self.provisioned():
+                return "exists"
+            provision(self.state, self._new_machine)
+            self._machine = None
+            return "provisioned"
+
 
 def serve(sidecar, port):
     class Handler(BaseHTTPRequestHandler):
@@ -61,6 +69,8 @@ def serve(sidecar, port):
         def do_POST(self):
             if self.path == "/resync":
                 self.run(self.resync)
+            elif self.path == "/provision":
+                self.run(lambda: (200, {"result": sidecar.provision()}))
             else:
                 self.reply(404, {"error": "not found"})
 

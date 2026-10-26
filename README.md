@@ -12,4 +12,4 @@
 
 ## auth
 
-`not implemented yet :( use https://github.com/MatthewKuKanich/FindMyFlipper/tree/main/AirTagGeneration to get dsid and searchPartyToken`
+`go run ./cmd/go-findmy login` (or `login sms`) with the anisette sidecar on 127.0.0.1:6969. Tokens and the password hash go to `account/`, keep it secret.

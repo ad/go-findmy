@@ -1,0 +1,25 @@
+# github.com/Laky-64/appleservices v1.0.15
+## explicit; go 1.26
+github.com/Laky-64/appleservices/gsa
+github.com/Laky-64/appleservices/internal/srp
+# github.com/Laky-64/http v1.0.8
+## explicit; go 1.20
+github.com/Laky-64/http
+github.com/Laky-64/http/types
+# github.com/eclipse/paho.mqtt.golang v1.5.1
+## explicit; go 1.24.0
+github.com/eclipse/paho.mqtt.golang
+github.com/eclipse/paho.mqtt.golang/packets
+# github.com/gorilla/websocket v1.5.3
+## explicit; go 1.12
+github.com/gorilla/websocket
+# golang.org/x/net v0.44.0
+## explicit; go 1.24.0
+golang.org/x/net/internal/socks
+golang.org/x/net/proxy
+# golang.org/x/sync v0.17.0
+## explicit; go 1.24.0
+golang.org/x/sync/semaphore
+# howett.net/plist v1.0.1
+## explicit; go 1.12
+howett.net/plist

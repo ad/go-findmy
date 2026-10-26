@@ -36,12 +36,21 @@ func (s *Sidecar) Headers() (map[string]string, error) {
 			h[clientInfo] = v
 		}
 	}
+	// FindMy.py sends loc next to X-Apple-Locale; the live-validated login had both.
+	if h["loc"] == "" && h["X-Apple-Locale"] != "" {
+		h["loc"] = h["X-Apple-Locale"]
+	}
 	return h, nil
 }
 
 func (s *Sidecar) Resync() error {
 	_, err := s.call(http.MethodPost, "/resync")
 	return err
+}
+
+func (s *Sidecar) Provision() (fresh bool, err error) {
+	r, err := s.call(http.MethodPost, "/provision")
+	return r["result"] == "provisioned", err
 }
 
 func (s *Sidecar) call(method, path string) (map[string]string, error) {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/ad/go-findmy/internal/anisette"
 	"github.com/ad/go-findmy/internal/findmy"
+	"github.com/ad/go-findmy/internal/icloud"
 )
 
 const (
@@ -20,15 +21,6 @@ const (
 	authFile    = "auth.json"
 	anisetteURL = "http://127.0.0.1:6969"
 )
-
-type auth struct {
-	DSID             string `json:"dsid"`
-	SearchPartyToken string `json:"searchPartyToken"`
-}
-
-func (a auth) SearchPartyAuth() (string, string, error) {
-	return a.DSID, a.SearchPartyToken, nil
-}
 
 type tag struct {
 	name string
@@ -84,14 +76,15 @@ func fetch() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	a, err := readAuth(keysDir)
+	sc := anisette.New(anisetteURL)
+	acct, err := icloud.Open(accountDir, sc)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	f := findmy.NewFetcher(anisette.New(anisetteURL), a, relogin)
+	f := findmy.NewFetcher(sc, acct, acct.Relogin)
 	out, err := latest(context.Background(), f, tags, time.Now())
-	if errors.Is(err, findmy.ErrUnauthorized) {
+	if loginNeeded(err) {
 		log.Fatal(err)
 	}
 	if err != nil {
@@ -105,22 +98,6 @@ func fetch() {
 	}
 }
 
-func readAuth(dir string) (auth, error) {
-	var a auth
-	data, err := os.ReadFile(filepath.Join(dir, authFile))
-	if err != nil {
-		return a, err
-	}
-	if err := json.Unmarshal(data, &a); err != nil {
-		return a, fmt.Errorf("%s: %w", authFile, err)
-	}
-	return a, nil
-}
-
-func relogin(context.Context) error {
-	return fmt.Errorf("token in %s rejected, refresh it", authFile)
-}
-
 func latest(ctx context.Context, f *findmy.Fetcher, tags []tag, now time.Time) (map[string]*findmy.Report, error) {
 	out := map[string]*findmy.Report{}
 	var errs []error
@@ -132,7 +109,7 @@ func latest(ctx context.Context, f *findmy.Fetcher, tags []tag, now time.Time) (
 		}
 	}
 	reports, err := f.LatestStatic(ctx, static, now)
-	if errors.Is(err, findmy.ErrUnauthorized) {
+	if loginNeeded(err) {
 		return out, err
 	}
 	errs = append(errs, err)
@@ -151,7 +128,7 @@ func latest(ctx context.Context, f *findmy.Fetcher, tags []tag, now time.Time) (
 			continue
 		}
 		r, err := f.LatestAccessory(ctx, t.acc, now)
-		if errors.Is(err, findmy.ErrUnauthorized) {
+		if loginNeeded(err) {
 			return out, err
 		}
 		errs = append(errs, err)
@@ -163,4 +140,8 @@ func latest(ctx context.Context, f *findmy.Fetcher, tags []tag, now time.Time) (
 		}
 	}
 	return out, errors.Join(errs...)
+}
+
+func loginNeeded(err error) bool {
+	return errors.Is(err, findmy.ErrUnauthorized) || errors.Is(err, icloud.ErrNeedLogin)
 }

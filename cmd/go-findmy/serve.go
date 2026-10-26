@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -20,6 +19,7 @@ import (
 	"github.com/ad/go-findmy/internal/anisette"
 	"github.com/ad/go-findmy/internal/findmy"
 	"github.com/ad/go-findmy/internal/ha"
+	"github.com/ad/go-findmy/internal/icloud"
 	"github.com/ad/go-findmy/internal/web"
 )
 
@@ -38,22 +38,28 @@ type service struct {
 	keysDir string
 	dataDir string
 	fetcher *findmy.Fetcher
+	acct    *icloud.Account
 	pub     ha.Publisher
 
 	mu       sync.Mutex
 	status   web.Status
 	reports  map[string]*findmy.Report
-	rejected *auth
+	rejected string
 }
 
-func newService(keysDir, dataDir string, f *findmy.Fetcher, pub ha.Publisher) *service {
-	return &service{keysDir: keysDir, dataDir: dataDir, fetcher: f, pub: pub, reports: map[string]*findmy.Report{}}
+func newService(keysDir, dataDir string, f *findmy.Fetcher, acct *icloud.Account, pub ha.Publisher) *service {
+	f.Credentials = acct
+	return &service{keysDir: keysDir, dataDir: dataDir, fetcher: f, acct: acct, pub: pub, reports: map[string]*findmy.Report{}}
 }
 
 func (s *service) Status() web.Status {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.status
+	st := s.status
+	s.mu.Unlock()
+	if err := s.acct.Cooldown(); err != nil {
+		st.Cooldown = err.Error()
+	}
+	return st
 }
 
 func (s *service) wait(interval time.Duration, now time.Time) time.Duration {
@@ -97,22 +103,17 @@ func (s *service) fetchAndPublish(ctx context.Context, now time.Time) error {
 	}
 	defer s.setTags(tags)
 
-	a, err := readAuth(s.keysDir)
-	if err != nil {
-		return errors.Join(append(errs, s.setLoginRequired(true), fmt.Errorf("no credentials, sign in: %w", err))...)
-	}
-	if s.rejected != nil && *s.rejected == a {
-		return errors.Join(errs...)
+	if s.rejected != "" && s.rejected == s.credentials() {
+		return errors.Join(append(errs, s.setLoginRequired(true), errors.New("Apple rejected the token, sign in again"))...)
 	}
 
-	s.fetcher.Credentials = a
 	reports, err := latest(ctx, s.fetcher, tags, now)
-	unauthorized := errors.Is(err, findmy.ErrUnauthorized)
-	s.rejected = nil
-	if unauthorized {
-		s.rejected = &a
+	needed := loginNeeded(err)
+	s.rejected = ""
+	if errors.Is(err, findmy.ErrUnauthorized) {
+		s.rejected = s.credentials()
 	}
-	errs = append(errs, err, s.setLoginRequired(unauthorized))
+	errs = append(errs, err, s.setLoginRequired(needed))
 
 	for _, t := range tags {
 		if r := reports[t.name]; r != nil {
@@ -121,6 +122,15 @@ func (s *service) fetchAndPublish(ctx context.Context, now time.Time) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// Account keeps a token whose relogin failed without an Apple refusal; this stops resending it.
+func (s *service) credentials() string {
+	dsid, token, err := s.acct.SearchPartyAuth()
+	if err != nil {
+		return ""
+	}
+	return dsid + ":" + token
 }
 
 func (s *service) setLoginRequired(required bool) error {
@@ -147,13 +157,71 @@ func (t tag) haTag() ha.Tag {
 	return ha.Tag{ID: ha.ID(t.key.ID), Name: strings.TrimSuffix(t.name, ".keys"), Model: "OpenHaystack"}
 }
 
-type pendingLogin struct{}
+type ingressLogin struct {
+	acct      *icloud.Account
+	provision func() (fresh bool, err error)
 
-var errLoginNotWired = fmt.Errorf("sign-in is not wired yet; put dsid and searchPartyToken into %s", filepath.Join(addonDataDir, keysDir, authFile))
+	mu      sync.Mutex
+	pending *icloud.SecondFactor
+	phoneID int64
+}
 
-func (pendingLogin) SignIn(context.Context, string, string) (bool, error) { return false, errLoginNotWired }
+func (l *ingressLogin) SignIn(ctx context.Context, appleID, password string) (bool, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.pending = nil
+	// The sidecar provisions against Apple and cannot see the account cooldown.
+	if err := l.acct.Cooldown(); err != nil {
+		return false, err
+	}
+	if _, err := l.provision(); err != nil {
+		return false, err
+	}
+	sf, err := l.acct.Login(ctx, appleID, password)
+	if err != nil || sf == nil {
+		return false, err
+	}
+	if sf.TrustedDevice {
+		err = sf.RequestTrustedDeviceCode(ctx)
+	} else {
+		err = l.requestSMS(ctx, sf)
+	}
+	if err != nil {
+		return false, err
+	}
+	l.pending = sf
+	return true, nil
+}
 
-func (pendingLogin) SubmitCode(context.Context, string) error { return errLoginNotWired }
+func (l *ingressLogin) requestSMS(ctx context.Context, sf *icloud.SecondFactor) error {
+	phones, err := sf.Phones(ctx)
+	if err != nil {
+		return err
+	}
+	if len(phones) == 0 {
+		return errors.New("icloud: the account has no trusted phone numbers")
+	}
+	l.phoneID = phones[0].ID
+	return sf.RequestSMSCode(ctx, l.phoneID)
+}
+
+func (l *ingressLogin) SubmitCode(ctx context.Context, code string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.pending == nil {
+		return errors.New("no sign-in waits for a code, sign in first")
+	}
+	var err error
+	if l.pending.TrustedDevice {
+		err = l.pending.SubmitTrustedDeviceCode(ctx, code)
+	} else {
+		err = l.pending.SubmitSMSCode(ctx, l.phoneID, code)
+	}
+	if err == nil {
+		l.pending = nil
+	}
+	return err
+}
 
 func serve() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -181,10 +249,15 @@ func serve() {
 		log.Print(err)
 	}
 
-	f := findmy.NewFetcher(anisette.New(anisetteURL), nil, relogin)
-	s := newService(filepath.Join(addonDataDir, keysDir), addonDataDir, f, client)
+	sc := anisette.New(anisetteURL)
+	acct, err := icloud.Open(filepath.Join(addonDataDir, accountDir), sc)
+	if err != nil {
+		log.Fatal(err)
+	}
+	s := newService(filepath.Join(addonDataDir, keysDir), addonDataDir, findmy.NewFetcher(sc, acct, acct.Relogin), acct, client)
+	login := &ingressLogin{acct: acct, provision: sc.Provision}
 	go func() {
-		log.Fatal(http.ListenAndServe(ingressAddr, &web.Server{Login: pendingLogin{}, KeysDir: s.keysDir, Status: s.Status}))
+		log.Fatal(http.ListenAndServe(ingressAddr, &web.Server{Login: login, KeysDir: s.keysDir, Status: s.Status}))
 	}()
 
 	log.Printf("polling every %v", interval)

@@ -6,7 +6,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Laky-64/appleservices/gsa"
 )
+
+var _ gsa.AnisetteProvider = (*Sidecar)(nil)
 
 func fakeSidecar(t *testing.T, handler http.HandlerFunc) *Sidecar {
 	t.Helper()
@@ -101,6 +105,38 @@ func TestResync(t *testing.T) {
 		}
 		if err != nil && !strings.Contains(err.Error(), "refused") {
 			t.Errorf("err = %v, want the verdict", err)
+		}
+	}
+}
+
+func TestHeadersAddLocFromLocale(t *testing.T) {
+	s := fakeSidecar(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"X-Apple-I-MD":"otp","X-Apple-I-MD-M":"mid","X-Apple-Locale":"en_US"}`)
+	})
+
+	h, err := s.Headers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h["loc"] != "en_US" {
+		t.Errorf("loc = %q, want en_US", h["loc"])
+	}
+}
+
+func TestProvision(t *testing.T) {
+	for _, result := range []string{"provisioned", "exists"} {
+		s := fakeSidecar(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost || r.URL.Path != "/provision" {
+				t.Errorf("got %s %s, want POST /provision", r.Method, r.URL.Path)
+			}
+			fmt.Fprintf(w, `{"result":%q}`, result)
+		})
+		fresh, err := s.Provision()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fresh != (result == "provisioned") {
+			t.Errorf("%s: fresh = %v", result, fresh)
 		}
 	}
 }
