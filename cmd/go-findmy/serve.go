@@ -108,7 +108,7 @@ func (s *service) fetchAndPublish(ctx context.Context, now time.Time) error {
 	}
 
 	reports, err := latest(ctx, s.fetcher, tags, now)
-	needed := loginNeeded(err)
+	needed := loginNeeded(err) || s.credentials() == ""
 	s.rejected = ""
 	if errors.Is(err, findmy.ErrUnauthorized) {
 		s.rejected = s.credentials()
