@@ -132,6 +132,14 @@ func (a *Account) Cooldown() error {
 	return a.cooling()
 }
 
+// Refused starts the cooldown after a failed sidecar call that may have reached Apple.
+func (a *Account) Refused(err error) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.st.CooldownUntil = a.now().Add(cooldown)
+	return errors.Join(err, a.save())
+}
+
 func (a *Account) SearchPartyAuth() (dsid, token string, err error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

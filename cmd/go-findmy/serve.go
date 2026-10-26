@@ -185,7 +185,7 @@ func (l *ingressLogin) SignIn(ctx context.Context, appleID, password string) (bo
 		return false, err
 	}
 	if _, err := l.provision(); err != nil {
-		return false, err
+		return false, l.acct.Refused(err)
 	}
 	sf, err := l.acct.Login(ctx, appleID, password)
 	if err != nil {

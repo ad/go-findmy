@@ -29,8 +29,9 @@ const macClientInfo = "<MacBookPro13,2> <macOS;13.1;22C65> <com.apple.AuthKit/1 
 type fakeAnisette struct {
 	mu      sync.Mutex
 	calls   int
-	resyncs int
-	err     error
+	resyncs   int
+	err       error
+	resyncErr error
 }
 
 func (f *fakeAnisette) Headers() (map[string]string, error) {
@@ -53,7 +54,7 @@ func (f *fakeAnisette) Resync() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.resyncs++
-	return nil
+	return f.resyncErr
 }
 
 // SRP here uses the server-side equations, so a client that only agrees with itself fails.

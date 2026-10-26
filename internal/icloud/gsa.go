@@ -199,6 +199,8 @@ func (a *Account) authenticate(ctx context.Context, user string, digest []byte) 
 		return r, err
 	}
 	if err := a.anisette.Resync(); err != nil {
+		// The sidecar does not say whether Apple refused the resync, so count it as a refusal.
+		a.st.CooldownUntil = a.now().Add(cooldown)
 		return gsaResult{}, fmt.Errorf("icloud: anisette resync: %w", err)
 	}
 	r, err = a.srpLogin(ctx, user, digest)

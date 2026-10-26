@@ -35,7 +35,7 @@ func login(sms bool) {
 	// A fresh machine is accepted for about 60 s, so credentials come first and the login right after.
 	fresh, err := sc.Provision()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(acct.Refused(err))
 	}
 	if fresh {
 		log.Print("anisette: provisioned a new machine")

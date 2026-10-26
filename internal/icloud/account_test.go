@@ -233,6 +233,18 @@ func TestExpiredMachineIsResyncedOnce(t *testing.T) {
 	}
 }
 
+func TestFailedResyncDuringLoginCoolsDown(t *testing.T) {
+	apple := newFakeApple(t, "hunter2")
+	apple.initStatus = httpStatus(434)
+	a := apple.account(t, t.TempDir(), &fakeAnisette{resyncErr: errBoom})
+	if _, err := a.Login(ctx, "user@example.com", "hunter2"); err == nil {
+		t.Fatal("login with a failed resync succeeded")
+	}
+	if err := a.Cooldown(); !errors.Is(err, ErrCooldown) {
+		t.Errorf("Cooldown = %v, want ErrCooldown", err)
+	}
+}
+
 func TestResyncAtCompleteRestartsFromInit(t *testing.T) {
 	apple := newFakeApple(t, "hunter2")
 	expired := true
