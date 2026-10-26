@@ -339,11 +339,12 @@ func loadKeysFromFiles() (map[string]string, error) {
 				return privkeys, err
 			}
 
-			var keyFile findmy.KeyFile
+			k, err := findmy.ReadKeyFile(key)
+			if err != nil {
+				return privkeys, fmt.Errorf("%s: %w", filename, err)
+			}
 
-			json.Unmarshal(key, &keyFile)
-
-			privkeys[keyFile.HashedKey] = keyFile.PrivateKey
+			privkeys[k.ID] = base64.StdEncoding.EncodeToString(k.Private)
 		}
 	}
 

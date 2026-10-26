@@ -144,12 +144,12 @@ func (a *Accessory) MaxIndex(t time.Time) int {
 	return a.alignmentIndex + int(t.Sub(a.alignmentDate)/keyInterval)
 }
 
-// Secondary indices i/96+1 and i/96+2 are FindMy.py's guess, unconfirmed against Apple.
 func (a *Accessory) KeysAt(i int) []Key {
 	if i < 0 {
 		return nil
 	}
-	keys := append(a.chain(a.skn, i, i, false), a.chain(a.sks, i/96+1, i/96+2, true)...)
+	s1, s2 := secondaryRange(i)
+	keys := append(a.chain(a.skn, i, i, false), a.chain(a.sks, s1, s2, true)...)
 	for j := range keys {
 		keys[j].Index = i
 	}
@@ -169,15 +169,18 @@ const (
 func (a *Accessory) Batches(now time.Time) []Batch {
 	lo := max(a.MinIndex(now.Add(-fetchWindow)), 0)
 	hi := a.MaxIndex(now)
+	sLo, _ := secondaryRange(lo)
+	_, sHi := secondaryRange(hi)
 	primary := a.chain(a.skn, lo, hi, false)
-	secondary := a.chain(a.sks, lo/96+1, hi/96+2, true)
+	secondary := a.chain(a.sks, sLo, sHi, true)
 
 	var out []Batch
 	var cur Batch
 	seen := map[string]bool{}
 	for i := hi; i >= lo; i-- {
 		p := primary[i-lo]
-		s := secondary[i/96-lo/96 : i/96-lo/96+2]
+		s1, s2 := secondaryRange(i)
+		s := secondary[s1-sLo : s2-sLo+1]
 		fresh := s[:0:0]
 		for _, k := range s {
 			if !seen[k.ID] {
@@ -197,6 +200,11 @@ func (a *Accessory) Batches(now time.Time) []Batch {
 		}
 	}
 	return append(out, cur)
+}
+
+// FindMy.py's guess, unconfirmed against Apple.
+func secondaryRange(primary int) (first, last int) {
+	return primary/96 + 1, primary/96 + 2
 }
 
 func (a *Accessory) chain(seed []byte, from, to int, secondary bool) []Key {
