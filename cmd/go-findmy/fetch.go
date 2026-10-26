@@ -6,18 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/ad/go-findmy/internal/anisette"
 	"github.com/ad/go-findmy/internal/findmy"
 )
 
 const (
 	keysDir     = "keys"
 	authFile    = "auth.json"
-	anisetteURL = "http://localhost:6969"
+	anisetteURL = "http://127.0.0.1:6969"
 )
 
 type auth struct {
@@ -27,21 +27,6 @@ type auth struct {
 
 func (a auth) SearchPartyAuth() (string, string, error) {
 	return a.DSID, a.SearchPartyToken, nil
-}
-
-type httpAnisette string
-
-func (u httpAnisette) Headers() (map[string]string, error) {
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Get(string(u))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("anisette: HTTP %d", resp.StatusCode)
-	}
-	var h map[string]string
-	return h, json.NewDecoder(resp.Body).Decode(&h)
 }
 
 type tag struct {
@@ -107,7 +92,7 @@ func fetch() {
 		log.Fatalf("%s: %v", authFile, err)
 	}
 
-	f := findmy.NewFetcher(httpAnisette(anisetteURL), a, func(context.Context) error {
+	f := findmy.NewFetcher(anisette.New(anisetteURL), a, func(context.Context) error {
 		return fmt.Errorf("token in %s rejected, refresh it", authFile)
 	})
 	ctx := context.Background()
