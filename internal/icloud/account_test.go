@@ -303,6 +303,20 @@ func TestTokenRejectedRightAfterReloginStops(t *testing.T) {
 	}
 }
 
+func TestReloginWithoutSavedPasswordNeedsLogin(t *testing.T) {
+	a, err := Open(t.TempDir(), &fakeAnisette{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.st = state{DSID: "1", Tokens: map[string]string{"searchPartyToken": "tok"}}
+	if err := a.Relogin(ctx); !errors.Is(err, ErrNeedLogin) {
+		t.Fatalf("Relogin = %v, want ErrNeedLogin", err)
+	}
+	if _, _, err := a.SearchPartyAuth(); !errors.Is(err, ErrNeedLogin) {
+		t.Errorf("SearchPartyAuth = %v, the rejected token is still offered", err)
+	}
+}
+
 func TestThrottledPhoneListCoolsDown(t *testing.T) {
 	apple := newFakeApple(t, "hunter2")
 	apple.completeStatus = status(map[string]any{"ec": 0, "au": "secondaryAuth"})

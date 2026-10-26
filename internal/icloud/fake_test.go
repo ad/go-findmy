@@ -27,8 +27,8 @@ import (
 const macClientInfo = "<MacBookPro13,2> <macOS;13.1;22C65> <com.apple.AuthKit/1 (com.apple.akd/1.0)>"
 
 type fakeAnisette struct {
-	mu      sync.Mutex
-	calls   int
+	mu        sync.Mutex
+	calls     int
 	resyncs   int
 	err       error
 	resyncErr error

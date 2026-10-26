@@ -157,6 +157,14 @@ func TestPollSendsNothingWhileAccountNeedsLogin(t *testing.T) {
 	}
 }
 
+func TestPollSendsNothingDuringCooldown(t *testing.T) {
+	fx := newPollFixture(t, map[string]any{"dsid": "1", "tokens": map[string]string{"searchPartyToken": "tok"}, "cooldownUntil": time.Now().Add(time.Hour)})
+	fx.s.poll(context.Background(), time.Now())
+	if fx.requests != 0 || !strings.Contains(fx.s.Status().LastError, "cooldown") {
+		t.Errorf("%d requests, last error %q; want 0 and the cooldown", fx.requests, fx.s.Status().LastError)
+	}
+}
+
 func TestSignInClearsLoginRequiredAtOnce(t *testing.T) {
 	fx := newPollFixture(t, signedIn)
 	fx.s.setLoginRequired(true)

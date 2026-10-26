@@ -41,10 +41,9 @@ type service struct {
 	acct    *icloud.Account
 	pub     ha.Publisher
 
-	mu       sync.Mutex
-	status   web.Status
-	reports  map[string]*findmy.Report
-	rejected string
+	mu      sync.Mutex
+	status  web.Status
+	reports map[string]*findmy.Report
 }
 
 func newService(keysDir, dataDir string, f *findmy.Fetcher, acct *icloud.Account, pub ha.Publisher) *service {
@@ -106,17 +105,12 @@ func (s *service) fetchAndPublish(ctx context.Context, now time.Time) error {
 	}
 	defer s.setTags(tags)
 
-	// Account keeps a token whose relogin failed without an Apple refusal; this stops resending it.
-	if s.rejected != "" && s.rejected == s.credentials() {
-		return errors.Join(append(errs, s.setLoginRequired(true), errors.New("Apple rejected the token, sign in again"))...)
+	if err := s.acct.Cooldown(); err != nil {
+		return errors.Join(append(errs, err)...)
 	}
 
 	reports, err := latest(ctx, s.fetcher, tags, now)
 	needed := loginNeeded(err) || s.credentials() == ""
-	s.rejected = ""
-	if errors.Is(err, findmy.ErrUnauthorized) {
-		s.rejected = s.credentials()
-	}
 	errs = append(errs, err, s.setLoginRequired(needed))
 
 	for _, t := range tags {

@@ -174,8 +174,12 @@ func (a *Account) Relogin(ctx context.Context) error {
 	if err := a.cooling(); err != nil {
 		return err
 	}
-	if a.st.NeedLogin != "" || a.st.PasswordSHA256 == nil {
+	if a.st.NeedLogin != "" {
 		return fmt.Errorf("%w: %s", ErrNeedLogin, a.st.NeedLogin)
+	}
+	if a.st.PasswordSHA256 == nil {
+		a.st.NeedLogin = "Apple rejected the token and no password is saved to sign in again"
+		return errors.Join(fmt.Errorf("%w: %s", ErrNeedLogin, a.st.NeedLogin), a.save())
 	}
 	if at := a.st.ReloginAt; !at.IsZero() && a.now().Before(at.Add(cooldown)) {
 		a.st.NeedLogin = "Apple rejected the token of the relogin at " + at.UTC().Format(time.RFC3339)

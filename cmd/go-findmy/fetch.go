@@ -81,6 +81,9 @@ func fetch() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if err := acct.Cooldown(); err != nil {
+		log.Fatal(err)
+	}
 
 	f := findmy.NewFetcher(sc, acct, acct.Relogin)
 	out, err := latest(context.Background(), f, tags, time.Now())
