@@ -1,5 +1,5 @@
 // Apple's SRP-6a variant, adapted from github.com/Laky-64/appleservices internal/srp.
-// MIT License, Copyright (c) 2026 Lauren.
+// MIT License, Copyright (c) 2026 Lauren, full text in LICENSE-appleservices.
 
 package icloud
 
