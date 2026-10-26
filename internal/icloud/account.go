@@ -3,6 +3,9 @@ package icloud
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +23,9 @@ const (
 	stateFile = "account.json"
 	cooldown  = 45 * time.Minute
 )
+
+//go:embed apple_root_ca.pem
+var appleRootCA []byte
 
 var (
 	ErrNeedLogin = errors.New("icloud: login needed, run go-findmy login")
@@ -58,11 +64,21 @@ func Open(dir string, anisette Anisette) (*Account, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
+	roots, err := x509.SystemCertPool()
+	if err != nil {
+		roots = x509.NewCertPool()
+	}
+	// gsa.apple.com chains to Apple Root CA, which Linux CA bundles do not ship.
+	if !roots.AppendCertsFromPEM(appleRootCA) {
+		return nil, errors.New("icloud: bad embedded Apple Root CA")
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{RootCAs: roots}
 	jar, _ := cookiejar.New(nil)
 	a := &Account{
 		path:     filepath.Join(dir, stateFile),
 		anisette: anisette,
-		http:     &http.Client{Jar: jar, Timeout: 30 * time.Second},
+		http:     &http.Client{Jar: jar, Transport: transport, Timeout: 30 * time.Second},
 		gsaURL:   "https://gsa.apple.com",
 		setupURL: "https://setup.icloud.com",
 		now:      time.Now,
