@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -116,7 +117,38 @@ func (a *Accessory) UpdateAlignment(t time.Time, i int) {
 	a.alignmentDate, a.alignmentIndex = t, i
 }
 
+// A poll holds its copy for minutes while an import may replace the file.
+var saveMu sync.Mutex
+
 func (a *Accessory) Save(path string) error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
+	if cur, err := readAccessory(path); err == nil && cur.Identifier() == a.Identifier() {
+		a.UpdateAlignment(cur.alignmentDate, cur.alignmentIndex)
+	}
+	return a.write(path)
+}
+
+func (a *Accessory) SaveAlignment(path string) error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
+	cur, err := readAccessory(path)
+	if err != nil {
+		return err
+	}
+	cur.UpdateAlignment(a.alignmentDate, a.alignmentIndex)
+	return cur.write(path)
+}
+
+func readAccessory(path string) (*Accessory, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAccessory(data)
+}
+
+func (a *Accessory) write(path string) error {
 	a.raw["alignment_date"], _ = json.Marshal(a.alignmentDate)
 	a.raw["alignment_index"], _ = json.Marshal(a.alignmentIndex)
 	data, err := json.MarshalIndent(a.raw, "", "  ")

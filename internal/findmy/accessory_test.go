@@ -206,6 +206,50 @@ func TestSavedAccessoryKeepsAlignmentAndUnknownFields(t *testing.T) {
 	}
 }
 
+func TestSaveKeepsAlignmentAheadOnDisk(t *testing.T) {
+	v := loadVectors(t)
+	seen := mustTime(t, "2026-03-02T00:00:00Z")
+	path := t.TempDir() + "/tag.json"
+	polled := loadAccessory(t, v.Accessory)
+	polled.UpdateAlignment(seen, 5100)
+	if err := polled.Save(path); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := loadAccessory(t, v.Accessory).Save(path); err != nil {
+		t.Fatal(err)
+	}
+	saved, _ := os.ReadFile(path)
+	if got := loadAccessory(t, saved).MinIndex(seen); got != 5100 {
+		t.Errorf("alignment index after re-import = %d, want 5100", got)
+	}
+}
+
+func TestSaveAlignmentKeepsFieldsImportedMeanwhile(t *testing.T) {
+	v := loadVectors(t)
+	path := t.TempDir() + "/tag.json"
+	stale := loadAccessory(t, v.Accessory)
+
+	var renamed map[string]any
+	json.Unmarshal(v.Accessory, &renamed)
+	renamed["name"] = "Renamed"
+	raw, _ := json.Marshal(renamed)
+	if err := loadAccessory(t, raw).Save(path); err != nil {
+		t.Fatal(err)
+	}
+
+	seen := mustTime(t, "2026-03-02T00:00:00Z")
+	stale.UpdateAlignment(seen, 5100)
+	if err := stale.SaveAlignment(path); err != nil {
+		t.Fatal(err)
+	}
+	saved, _ := os.ReadFile(path)
+	b := loadAccessory(t, saved)
+	if b.Name() != "Renamed" || b.MinIndex(seen) != 5100 {
+		t.Errorf("name %q, alignment index %d; want Renamed and 5100", b.Name(), b.MinIndex(seen))
+	}
+}
+
 func TestParseAccessoryRejectsBadInput(t *testing.T) {
 	v := loadVectors(t)
 	edit := func(f func(m map[string]any)) []byte {

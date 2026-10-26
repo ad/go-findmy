@@ -134,7 +134,7 @@ func latest(ctx context.Context, f *findmy.Fetcher, tags []tag, now time.Time) (
 		errs = append(errs, err)
 		out[t.name] = r
 		if r != nil {
-			if err := t.acc.Save(t.path); err != nil {
+			if err := t.acc.SaveAlignment(t.path); err != nil {
 				errs = append(errs, fmt.Errorf("%s: saving alignment: %w", t.name, err))
 			}
 		}
