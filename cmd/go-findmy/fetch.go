@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ad/go-findmy/internal/anisette"
@@ -45,7 +46,7 @@ func loadTags(dir string) ([]tag, error) {
 	for _, e := range entries {
 		name := e.Name()
 		path := filepath.Join(dir, name)
-		if e.IsDir() || name == authFile {
+		if e.IsDir() || strings.HasSuffix(name, authFile) {
 			continue
 		}
 		switch filepath.Ext(name) {

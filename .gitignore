@@ -22,3 +22,5 @@ go.work
 
 keys/auth.json
 keys/*.keys
+keys/*.json
+!keys/example.auth.json

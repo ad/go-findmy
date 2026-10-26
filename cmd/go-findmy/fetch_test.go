@@ -35,6 +35,7 @@ func TestLoadTagsSkipsLegacyKeysWithWarning(t *testing.T) {
 		AdvKey:     base64.StdEncoding.EncodeToString(make([]byte, 57)),
 	})
 	write(authFile, auth{DSID: "1", SearchPartyToken: "t"})
+	write("example."+authFile, auth{})
 
 	var vectors struct{ Accessory json.RawMessage }
 	raw, err := os.ReadFile("../../internal/findmy/testdata/findmypy-22e4879.json")
