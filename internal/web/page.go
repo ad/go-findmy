@@ -43,7 +43,11 @@ button:disabled{opacity:.5;cursor:not-allowed}
 details>summary{cursor:pointer;font-weight:600;list-style-position:inside}
 details[open]>summary{margin-bottom:.5rem}
 .tags{list-style:none;margin:0;padding:0}
-.tags li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.1rem 1rem;padding:.6rem 0;border-top:1px solid var(--line)}
+.tags li{padding:.6rem 0;border-top:1px solid var(--line)}
+.tag{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.1rem 1rem}
+.del{margin-top:.3rem;font-size:.9rem}
+.del>summary{color:var(--muted);font-weight:400}
+button.danger{border-color:var(--err);background:var(--err);color:var(--card)}
 .tags li:first-child{border-top:0}
 .tags b{font-weight:600}
 a{color:var(--accent)}
@@ -97,7 +101,9 @@ try{new MutationObserver(apply).observe(parent.document.documentElement,{attribu
 {{if .Tags}}
 <section class="card">
 <h2>Tags</h2>
-<ul class="tags">{{range .Tags}}<li><b>{{.Name}}</b>{{with .Report}}<span class="muted">{{.Time.Format "2006-01-02 15:04 MST"}} · <a href="https://www.openstreetmap.org/?mlat={{.Latitude}}&amp;mlon={{.Longitude}}#map=16/{{.Latitude}}/{{.Longitude}}" target="_blank" rel="noopener noreferrer">{{.Latitude}}, {{.Longitude}}</a> · ±{{.Accuracy}} m</span>{{else}}<span class="muted">no report yet</span>{{end}}</li>{{end}}</ul>
+<ul class="tags">{{range .Tags}}<li><div class="tag"><div><b>{{.Name}}</b>{{if .DeviceID}}<br><a class="muted" href="/config/devices/device/{{.DeviceID}}" target="_top">{{.Entity}}</a>{{end}}</div>{{with .Report}}<span class="muted">{{$.At .Time "2006-01-02 15:04 MST"}} · <a href="https://www.openstreetmap.org/?mlat={{.Latitude}}&amp;mlon={{.Longitude}}#map=16/{{.Latitude}}/{{.Longitude}}" target="_blank" rel="noopener noreferrer">{{.Latitude}}, {{.Longitude}}</a> · ±{{.Accuracy}} m</span>{{else}}<span class="muted">no report yet</span>{{end}}</div>
+<details class="del"><summary>Rename</summary><form method="post" action="rename"><p class="muted">The name of the device in Home Assistant. Leave it empty to use the name from the tag's keys.</p><input type="hidden" name="file" value="{{.File}}"><label for="name-{{.File}}">Name</label><input id="name-{{.File}}" name="name" value="{{.Name}}" maxlength="100"><div class="actions"><button>Save</button></div></form></details>
+<details class="del"><summary>Delete</summary><form method="post" action="delete"><p class="muted">Removes the keys of {{.Name}} from the add-on and its device from Home Assistant. To get the tag back, import it again.</p><input type="hidden" name="file" value="{{.File}}"><button class="danger">Delete {{.Name}}</button></form></details></li>{{end}}</ul>
 </section>
 <details class="card"><summary>Add a tag</summary>{{template "importform" .}}</details>
 {{else}}
@@ -107,7 +113,7 @@ try{new MutationObserver(apply).observe(parent.document.documentElement,{attribu
 </section>
 {{end}}
 <details class="card"><summary>Account</summary>
-<p class="muted">Last poll: {{if .LastPoll.IsZero}}not yet{{else}}{{.LastPoll.Format "2006-01-02 15:04:05 MST"}}{{end}}</p>
+<p class="muted">Last poll: {{if .LastPoll.IsZero}}not yet{{else}}{{.At .LastPoll "2006-01-02 15:04:05 MST"}}{{end}}</p>
 <p>To switch to another Apple ID, or to renew the session, sign in again.</p>
 {{template "loginform" .}}
 </details>

@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -30,8 +31,12 @@ type Login interface {
 }
 
 type TagStatus struct {
-	Name   string
-	Report *findmy.Report
+	File     string // the key file in KeysDir, what Delete takes
+	ID       string // the tag ID in the MQTT topics
+	Name     string
+	Entity   string // entity_id in Home Assistant, empty while unknown
+	DeviceID string // device in Home Assistant, empty while unknown
+	Report   *findmy.Report
 }
 
 type Status struct {
@@ -48,6 +53,12 @@ type Server struct {
 	Login   Login
 	KeysDir string
 	Status  func() Status
+	// Delete removes the tag kept in the key file and returns its name.
+	Delete func(file string) (name string, err error)
+	// Rename gives the tag kept in the key file a new name; an empty name restores the default.
+	Rename func(file, name string) error
+	// Location is the time zone the page shows times in; nil means UTC.
+	Location *time.Location
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +91,24 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusOK, "")
 	case r.Method == http.MethodPost && r.URL.Path == "/import":
 		s.importAccessory(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/rename":
+		name := strings.TrimSpace(r.FormValue("name"))
+		if err := s.Rename(r.FormValue("file"), name); err != nil {
+			s.render(w, http.StatusBadRequest, "Rename failed: "+err.Error())
+			return
+		}
+		if name == "" {
+			s.render(w, http.StatusOK, "The tag has its original name again.")
+			return
+		}
+		s.render(w, http.StatusOK, "Renamed to "+name+".")
+	case r.Method == http.MethodPost && r.URL.Path == "/delete":
+		name, err := s.Delete(r.FormValue("file"))
+		if err != nil {
+			s.render(w, http.StatusBadRequest, "Delete failed: "+err.Error())
+			return
+		}
+		s.render(w, http.StatusOK, "Deleted "+name+".")
 	default:
 		http.NotFound(w, r)
 	}
@@ -148,7 +177,7 @@ func (s *Server) render(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	sms, waiting := s.Login.Pending()
-	v := view{Status: s.Status(), Message: message, Failed: status >= 400, SMS: sms, Waiting: waiting}
+	v := view{Status: s.Status(), Message: message, Failed: status >= 400, SMS: sms, Waiting: waiting, loc: cmp.Or(s.Location, time.UTC)}
 	if err := page.Execute(w, v); err != nil {
 		log.Printf("ingress page: %v", err)
 	}
@@ -161,6 +190,12 @@ type view struct {
 	Failed  bool
 	Waiting bool // a sign-in waits for its code
 	SMS     bool // the code went out by SMS
+	loc     *time.Location
+}
+
+// At formats t in the time zone of the server, with the zone name.
+func (v view) At(t time.Time, layout string) string {
+	return t.In(v.loc).Format(layout)
 }
 
 // Step is the one thing the user has to do now: sign in, enter the code, or nothing.

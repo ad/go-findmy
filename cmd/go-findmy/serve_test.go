@@ -238,3 +238,170 @@ func TestPollIntervalHasA15MinuteFloor(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteRemovesKeysAndClearsTheDevice(t *testing.T) {
+	fx := newPollFixture(t, signedIn)
+	fx.s.poll(context.Background(), time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC))
+	id := ha.ID(fx.id)
+
+	name, err := fx.s.Delete("tag.keys")
+	if err != nil || name == "" {
+		t.Fatalf("Delete = %q, %v", name, err)
+	}
+	if _, err := os.Stat(filepath.Join(fx.keysDir, "tag.keys")); !os.IsNotExist(err) {
+		t.Errorf("key file is still there: %v", err)
+	}
+	for _, topic := range []string{"homeassistant/device_tracker/findmy/" + id + "/config", "findmy/" + id + "/attributes"} {
+		if payload, ok := fx.pub[topic]; !ok || payload != "" {
+			t.Errorf("%s = %q (published %v), want an empty retained message", topic, payload, ok)
+		}
+	}
+	if st := fx.s.Status(); len(st.Tags) != 0 {
+		t.Errorf("status still lists %+v", st.Tags)
+	}
+}
+
+func TestDeleteTouchesOnlyListedTags(t *testing.T) {
+	fx := newPollFixture(t, signedIn)
+	writeJSON(t, filepath.Join(fx.keysDir, "auth.json"), map[string]string{"password": "x"})
+	for _, file := range []string{"auth.json", "../tag.keys", "missing.keys"} {
+		if _, err := fx.s.Delete(file); err == nil {
+			t.Errorf("Delete(%q) succeeded", file)
+		}
+	}
+	for _, file := range []string{"auth.json", "tag.keys"} {
+		if _, err := os.Stat(filepath.Join(fx.keysDir, file)); err != nil {
+			t.Errorf("%s: %v", file, err)
+		}
+	}
+}
+
+func TestPollDoesNotBringBackADeletedTag(t *testing.T) {
+	fx := newPollFixture(t, signedIn)
+	fx.s.poll(context.Background(), time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC))
+	fx.s.Delete("tag.keys")
+	fx.s.poll(context.Background(), time.Date(2026, 10, 26, 12, 15, 0, 0, time.UTC))
+	if payload := fx.pub["homeassistant/device_tracker/findmy/"+ha.ID(fx.id)+"/config"]; payload != "" {
+		t.Errorf("the next poll announced the tag again: %s", payload)
+	}
+	if st := fx.s.Status(); len(st.Tags) != 0 {
+		t.Errorf("status lists %+v", st.Tags)
+	}
+}
+
+func TestLocationPrefersTheOptionThenTZ(t *testing.T) {
+	for _, c := range []struct{ option, env, want string }{
+		{"Europe/Moscow", "Asia/Tokyo", "Europe/Moscow"},
+		{"", "Asia/Tokyo", "Asia/Tokyo"},
+		{"", "nonsense", "UTC"},
+		{"", "", "UTC"},
+	} {
+		if got := location(c.option, c.env).String(); got != c.want {
+			t.Errorf("location(%q, %q) = %s, want %s", c.option, c.env, got, c.want)
+		}
+	}
+}
+
+func deviceName(t *testing.T, fx *pollFixture) string {
+	t.Helper()
+	var cfg struct{ Device struct{ Name string } }
+	if err := json.Unmarshal([]byte(fx.pub["homeassistant/device_tracker/findmy/"+ha.ID(fx.id)+"/config"]), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	return cfg.Device.Name
+}
+
+func TestRenameChangesTheDeviceAndSurvivesRestartsAndPolls(t *testing.T) {
+	fx := newPollFixture(t, signedIn)
+	fx.s.poll(context.Background(), time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC))
+	if got := deviceName(t, fx); got != "tag" {
+		t.Fatalf("default device name %q, want tag", got)
+	}
+
+	if err := fx.s.Rename("tag.keys", "  My keys "); err != nil {
+		t.Fatal(err)
+	}
+	if got := deviceName(t, fx); got != "My keys" {
+		t.Errorf("device name %q, want My keys", got)
+	}
+	if st := fx.s.Status(); len(st.Tags) != 1 || st.Tags[0].Name != "My keys" {
+		t.Errorf("status %+v", st.Tags)
+	}
+
+	fx.s.poll(context.Background(), time.Date(2026, 10, 26, 12, 15, 0, 0, time.UTC))
+	if got := deviceName(t, fx); got != "My keys" {
+		t.Errorf("a poll reset the name to %q", got)
+	}
+
+	restarted := newService(fx.keysDir, fx.s.dataDir, fx.s.fetcher, fx.s.acct, fx.pub)
+	restarted.poll(context.Background(), time.Date(2026, 10, 26, 13, 0, 0, 0, time.UTC))
+	if got := deviceName(t, fx); got != "My keys" {
+		t.Errorf("after a restart the name is %q", got)
+	}
+
+	if err := fx.s.Rename("tag.keys", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := deviceName(t, fx); got != "tag" {
+		t.Errorf("empty name gave %q, want the default tag", got)
+	}
+}
+
+func TestRenameRejectsUnknownTagsAndLongNames(t *testing.T) {
+	fx := newPollFixture(t, signedIn)
+	if err := fx.s.Rename("missing.keys", "x"); err == nil {
+		t.Error("renamed a tag that does not exist")
+	}
+	if err := fx.s.Rename("tag.keys", strings.Repeat("я", maxNameLen+1)); err == nil {
+		t.Error("accepted a name over the limit")
+	}
+	if err := fx.s.Rename("tag.keys", strings.Repeat("я", maxNameLen)); err != nil {
+		t.Errorf("rejected a name at the limit: %v", err)
+	}
+}
+
+func TestDeleteForgetsTheName(t *testing.T) {
+	fx := newPollFixture(t, signedIn)
+	fx.s.Rename("tag.keys", "My keys")
+	fx.s.Delete("tag.keys")
+	if len(fx.s.names) != 0 {
+		t.Errorf("names left: %v", fx.s.names)
+	}
+}
+
+type fakeRegistry struct {
+	calls    int
+	entities map[string]ha.Entity
+	err      error
+}
+
+func (r *fakeRegistry) Trackers(context.Context) (map[string]ha.Entity, error) {
+	r.calls++
+	return r.entities, r.err
+}
+
+func TestStatusLinksTagsToTheirHomeAssistantDevices(t *testing.T) {
+	fx := newPollFixture(t, signedIn)
+	reg := &fakeRegistry{entities: map[string]ha.Entity{ha.ID(fx.id): {EntityID: "device_tracker.tag", DeviceID: "dev1"}}}
+	fx.s.links.Registry = reg
+	fx.s.poll(context.Background(), time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC))
+
+	tags := fx.s.Status().Tags
+	if len(tags) != 1 || tags[0].Entity != "device_tracker.tag" || tags[0].DeviceID != "dev1" {
+		t.Fatalf("tags %+v", tags)
+	}
+	fx.s.Status()
+	if reg.calls != 1 {
+		t.Errorf("the registry was asked %d times, want once within the TTL", reg.calls)
+	}
+}
+
+func TestStatusWorksWhileHomeAssistantDoesNotAnswer(t *testing.T) {
+	fx := newPollFixture(t, signedIn)
+	fx.s.links.Registry = &fakeRegistry{err: errors.New("down")}
+	fx.s.poll(context.Background(), time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC))
+	tags := fx.s.Status().Tags
+	if len(tags) != 1 || tags[0].DeviceID != "" {
+		t.Errorf("tags %+v, want one without a link", tags)
+	}
+}

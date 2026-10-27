@@ -2,6 +2,7 @@ package ha
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -48,6 +49,14 @@ func AnnounceTag(p Publisher, t Tag) error {
 			"model":        t.Model,
 		},
 	})
+}
+
+// RemoveTag clears the retained messages of a tag, which makes Home Assistant drop its device.
+func RemoveTag(p Publisher, id string) error {
+	return errors.Join(
+		p.Publish(discovery+"/device_tracker/"+base+"/"+id+"/config", nil),
+		p.Publish(base+"/"+id+"/attributes", nil),
+	)
 }
 
 func PublishLocation(p Publisher, id string, r findmy.Report) error {

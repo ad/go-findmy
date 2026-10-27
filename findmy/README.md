@@ -33,6 +33,13 @@ tools/gate/export_tags.sh keys ~/airtags
 
 The first run builds the image and downloads iTunes 12.8.3 from Apple for CoreADI.
 
+## Tags and time zone
+
+- To remove a tag, open "Delete" under it in the panel and confirm. The add-on deletes the tag's key file and its device from Home Assistant. Import the tag again to get it back.
+- Under the name of each tag the panel links to its device page in Home Assistant, with the entity ID. The add-on finds them in the Home Assistant entity registry, which is why it asks for `homeassistant_api`; the links are missing while Home Assistant does not answer or has not created the entity yet.
+- To change the name of a tag's device in Home Assistant, open "Rename" under it. The name is kept in `/data/names.json`, so it stays when you import the tag again. An empty name restores the one from the tag's keys. The entity ID does not change; rename that in Home Assistant if you want.
+- The panel shows times in the time zone of Home Assistant. Set `timezone` (for example `Europe/Berlin`) to use another one.
+
 ## Polling
 
 - `poll_interval` is in minutes, 15 at least. Polling more often raises the risk of an Apple ban.

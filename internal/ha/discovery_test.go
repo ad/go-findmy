@@ -90,3 +90,20 @@ func TestLoginRequiredIsAProblemSensor(t *testing.T) {
 		t.Errorf("state %v, want ON", p["findmy/login_required"])
 	}
 }
+
+func TestRemoveTagClearsRetainedTopics(t *testing.T) {
+	topics := map[string][]byte{}
+	p := publisherFunc(func(topic string, payload []byte) error { topics[topic] = payload; return nil })
+	if err := RemoveTag(p, "abc"); err != nil {
+		t.Fatal(err)
+	}
+	for _, topic := range []string{"homeassistant/device_tracker/findmy/abc/config", "findmy/abc/attributes"} {
+		if payload, ok := topics[topic]; !ok || len(payload) != 0 {
+			t.Errorf("%s = %q (published %v), want an empty message", topic, payload, ok)
+		}
+	}
+}
+
+type publisherFunc func(topic string, payload []byte) error
+
+func (f publisherFunc) Publish(topic string, payload []byte) error { return f(topic, payload) }

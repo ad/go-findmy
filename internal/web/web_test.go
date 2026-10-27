@@ -41,8 +41,8 @@ func (l *fakeLogin) SubmitCode(_ context.Context, code string) error {
 }
 
 var tags = []TagStatus{
-	{Name: "Keys", Report: &findmy.Report{Latitude: 52.5, Longitude: 13.4, Accuracy: 25}},
-	{Name: "Bag"},
+	{File: "keys.json", Name: "Keys", Report: &findmy.Report{Latitude: 52.5, Longitude: 13.4, Accuracy: 25, Time: time.Date(2026, 10, 26, 22, 30, 0, 0, time.UTC)}},
+	{File: "bag.json", Name: "Bag"},
 }
 
 func newServer(t *testing.T) (*Server, *fakeLogin) {
@@ -272,5 +272,75 @@ func TestLoginCanAskForSMS(t *testing.T) {
 	do(s, http.MethodPost, "/login", url.Values{"apple_id": {"me@example.com"}, "password": {"pw"}, "sms": {"on"}})
 	if !l.sms {
 		t.Error("SMS not asked with the box ticked")
+	}
+}
+
+func TestTimesAreShownInTheConfiguredZone(t *testing.T) {
+	s, _ := newServer(t)
+	signedIn(s, tags)
+	shows(t, do(s, http.MethodGet, "/", nil).Body.String(), []string{"2026-10-26 22:30 UTC", "2026-10-26 11:00:00 UTC"}, nil)
+
+	s.Location = time.FixedZone("MSK", 3*60*60)
+	shows(t, do(s, http.MethodGet, "/", nil).Body.String(), []string{"2026-10-27 01:30 MSK", "2026-10-26 14:00:00 MSK"}, []string{"UTC"})
+}
+
+func TestEachTagCanBeDeleted(t *testing.T) {
+	s, _ := newServer(t)
+	signedIn(s, tags)
+	var deleted string
+	s.Delete = func(file string) (string, error) {
+		deleted = file
+		if file == "bad.json" {
+			return "", errors.New("no such tag")
+		}
+		return "Keys", nil
+	}
+	shows(t, do(s, http.MethodGet, "/", nil).Body.String(), []string{`action="delete"`, `name="file" value="keys.json"`, `value="bag.json"`}, nil)
+
+	w := do(s, http.MethodPost, "/delete", url.Values{"file": {"keys.json"}})
+	if w.Code != http.StatusOK || deleted != "keys.json" || !strings.Contains(w.Body.String(), "Deleted Keys.") {
+		t.Errorf("status %d, deleted %q, body %s", w.Code, deleted, w.Body)
+	}
+	w = do(s, http.MethodPost, "/delete", url.Values{"file": {"bad.json"}})
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "no such tag") {
+		t.Errorf("status %d, body lacks the error", w.Code)
+	}
+}
+
+func TestEachTagCanBeRenamed(t *testing.T) {
+	s, _ := newServer(t)
+	signedIn(s, tags)
+	var file, name string
+	s.Rename = func(f, n string) error {
+		file, name = f, n
+		if f == "bad.json" {
+			return errors.New("no such tag")
+		}
+		return nil
+	}
+	shows(t, do(s, http.MethodGet, "/", nil).Body.String(), []string{`action="rename"`, `name="name" value="Keys"`, `name="name" value="Bag"`}, nil)
+
+	w := do(s, http.MethodPost, "/rename", url.Values{"file": {"keys.json"}, "name": {"  My keys "}})
+	if w.Code != http.StatusOK || file != "keys.json" || name != "My keys" || !strings.Contains(w.Body.String(), "Renamed to My keys.") {
+		t.Errorf("status %d, got %q %q, body %s", w.Code, file, name, w.Body)
+	}
+	w = do(s, http.MethodPost, "/rename", url.Values{"file": {"keys.json"}, "name": {""}})
+	if w.Code != http.StatusOK || name != "" || !strings.Contains(w.Body.String(), "original name") {
+		t.Errorf("empty name: status %d, name %q", w.Code, name)
+	}
+	w = do(s, http.MethodPost, "/rename", url.Values{"file": {"bad.json"}, "name": {"x"}})
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "no such tag") {
+		t.Errorf("status %d, body lacks the error", w.Code)
+	}
+}
+
+func TestTagsLinkToTheirHomeAssistantDevice(t *testing.T) {
+	s, _ := newServer(t)
+	linked := []TagStatus{{File: "keys.json", Name: "Keys", Entity: "device_tracker.keys", DeviceID: "dev1"}, {File: "bag.json", Name: "Bag"}}
+	signedIn(s, linked)
+	body := do(s, http.MethodGet, "/", nil).Body.String()
+	shows(t, body, []string{`href="/config/devices/device/dev1"`, `target="_top"`, "device_tracker.keys"}, []string{"/config/devices/device/\""})
+	if n := strings.Count(body, "/config/devices/device/"); n != 1 {
+		t.Errorf("%d device links, want 1: the tag without an entity has none", n)
 	}
 }

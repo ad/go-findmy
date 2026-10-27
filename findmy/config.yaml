@@ -10,6 +10,7 @@ arch:
 init: false
 services:
   - mqtt:need
+homeassistant_api: true
 ingress: true
 ingress_port: 8099
 panel_icon: mdi:map-marker-radius
@@ -17,3 +18,4 @@ options:
   poll_interval: 15
 schema:
   poll_interval: int(15,)
+  timezone: str?
