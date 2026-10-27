@@ -1,8 +1,11 @@
 package web
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"log"
 	"net"
@@ -82,26 +85,61 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// importAccessory takes one tag or a JSON array of them, the airtags.json that export_tags.sh
+// gets from Apple. Everything is checked before the first file is written.
 func (s *Server) importAccessory(w http.ResponseWriter, r *http.Request) {
-	a, err := findmy.ParseAccessory([]byte(r.FormValue("accessory")))
-	if err == nil && a.Identifier() == "" {
-		err = errNoIdentifier
-	}
+	tags, err := s.parseTags([]byte(r.FormValue("accessory")))
 	if err != nil {
 		s.render(w, http.StatusBadRequest, "Import failed: "+err.Error())
 		return
 	}
-	name := ha.ID(a.Identifier()) + ".json"
-	if strings.HasSuffix(name, "auth.json") {
-		s.render(w, http.StatusBadRequest, "Import failed: identifier "+a.Identifier()+" collides with the credentials file")
+	names := make([]string, len(tags))
+	for i, a := range tags {
+		file := ha.ID(a.Identifier()) + ".json"
+		if err := a.Save(filepath.Join(s.KeysDir, file)); err != nil {
+			log.Printf("import %s: %v", file, err)
+			s.render(w, http.StatusInternalServerError, fmt.Sprintf("Import failed after %d of %d tags: %v", i, len(tags), err))
+			return
+		}
+		names[i] = a.Name()
+	}
+	if len(tags) == 1 {
+		s.render(w, http.StatusOK, "Imported "+names[0]+". It shows up after the next poll.")
 		return
 	}
-	if err := a.Save(filepath.Join(s.KeysDir, name)); err != nil {
-		log.Printf("import %s: %v", name, err)
-		s.render(w, http.StatusInternalServerError, "Import failed: "+err.Error())
-		return
+	s.render(w, http.StatusOK, fmt.Sprintf("Imported %d tags: %s. They show up after the next poll.", len(tags), strings.Join(names, ", ")))
+}
+
+func (s *Server) parseTags(data []byte) ([]*findmy.Accessory, error) {
+	items := []json.RawMessage{data}
+	list := bytes.HasPrefix(bytes.TrimSpace(data), []byte("["))
+	if list {
+		items = nil
+		if err := json.Unmarshal(data, &items); err != nil {
+			return nil, err
+		}
+		if len(items) == 0 {
+			return nil, errors.New("the list is empty")
+		}
 	}
-	s.render(w, http.StatusOK, "Imported "+a.Name()+". It shows up after the next poll.")
+	tags := make([]*findmy.Accessory, len(items))
+	for i, item := range items {
+		a, err := findmy.ParseAccessory(item)
+		if err == nil && a.Identifier() == "" {
+			err = errNoIdentifier
+		}
+		if err == nil && strings.HasSuffix(ha.ID(a.Identifier())+".json", "auth.json") {
+			err = errors.New("identifier " + a.Identifier() + " collides with the credentials file")
+		}
+		if err != nil {
+			if list {
+				err = fmt.Errorf("tag %d: %w", i+1, err)
+			}
+			return nil, err
+		}
+		tags[i] = a
+	}
+	return tags, nil
 }
 
 var errNoIdentifier = errors.New("accessory: identifier is empty")

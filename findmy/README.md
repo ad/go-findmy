@@ -12,7 +12,7 @@ Shows AirTags and OpenHaystack tags in Home Assistant as `device_tracker` entiti
 1. The add-on downloads iTunes 12.8.3 from Apple once, extracts CoreADI into `/data/coreadi` and deletes the installer.
 2. Open the add-on panel. It shows only the step you are on: Apple ID, then the code, then the tags. Sign in with your Apple ID. Right before the sign-in the add-on provisions an emulated Mac in `/data/anisette`; Apple sees a new Mac on your account.
 3. Enter the 2FA code. A trusted Apple device gets it. With "Code by SMS" ticked, or without a trusted device, the first trusted phone number gets an SMS.
-4. Once signed in, the panel lists your tags. Import each AirTag as JSON (paste it or pick the file) in FindMy.py / export-findmy format, see "AirTag keys". OpenHaystack `.keys` files go into `/data/keys`.
+4. Once signed in, the panel lists your tags. Import AirTags as JSON, one tag or a list of all of them like `airtags.json` (paste it or pick the file) in FindMy.py / export-findmy format, see "AirTag keys". OpenHaystack `.keys` files go into `/data/keys`.
 
 ## AirTag keys
 
@@ -28,7 +28,7 @@ tools/gate/export_tags.sh keys ~/airtags
 - After HTTP 429 both steps refuse to run for 45 minutes.
 - `keys` lists your devices with an escrow record: pick the one whose screen-lock passcode you know and type that passcode. It then deletes the saved login, which holds the password, whatever the outcome.
 - **A wrong passcode is not retried.** Apple limits wrong guesses, so check which device you picked.
-- You get one `<identifier>.json` per AirTag in `~/airtags`, mode 0600. Paste each into the panel's Import form, then delete the folder: the files are the tags' private keys.
+- You get one `<identifier>.json` per AirTag in `~/airtags`, mode 0600. Paste one file, or the whole `airtags.json` if `keys` left it, into the panel's Import form, then delete the folder: the files are the tags' private keys.
 - Nothing is added to the keychain circle. Apple does see one more Mac on the account: remove it from the device list afterwards.
 
 The first run builds the image and downloads iTunes 12.8.3 from Apple for CoreADI.

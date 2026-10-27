@@ -126,10 +126,10 @@ document.querySelectorAll('input[type=file][data-fill]').forEach(function(i){i.a
 <label class="check"><input name="sms" type="checkbox"><span>Send the code by SMS instead of showing it on a trusted device<br><span class="muted">Ticked automatically when the account has no trusted device.</span></span></label>
 <div class="actions"><button{{if .Cooldown}} disabled{{end}}>Sign in</button>{{if .Cooldown}}<span class="muted">Wait until the pause ends.</span>{{end}}</div>
 </form>{{end}}
-{{define "importform"}}<p class="muted">Paste the JSON of one tag, or pick the file. See the Documentation tab on how to export your AirTag keys once.</p>
+{{define "importform"}}<p class="muted">Paste the JSON of one tag or of all of them (a list, like airtags.json), or pick the file. See the Documentation tab on how to export your AirTag keys once.</p>
 <form method="post" action="import">
 <label for="accessory">Tag JSON</label>
-<textarea id="accessory" name="accessory" rows="7" placeholder="FindMy.py / export-findmy accessory JSON" required></textarea>
+<textarea id="accessory" name="accessory" rows="7" placeholder="FindMy.py / export-findmy accessory JSON, one tag or a list" required></textarea>
 <label for="accessory-file">or choose a file</label>
 <input id="accessory-file" type="file" accept=".json,application/json" data-fill="accessory">
 <div class="actions"><button>Import</button></div>

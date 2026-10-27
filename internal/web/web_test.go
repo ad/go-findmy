@@ -187,6 +187,39 @@ func TestImportWritesValidatedAccessoryInsideKeysDir(t *testing.T) {
 	}
 }
 
+func TestImportTakesAListOfTags(t *testing.T) {
+	s, _ := newServer(t)
+	list := "[" + accessoryJSON(t, "tag/a") + "," + accessoryJSON(t, "tag/b") + "]"
+	w := do(s, http.MethodPost, "/import", url.Values{"accessory": {list}})
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Imported 2 tags") {
+		t.Fatalf("status %d: %s", w.Code, w.Body)
+	}
+	for _, name := range []string{"tag_a.json", "tag_b.json"} {
+		if _, err := os.Stat(filepath.Join(s.KeysDir, name)); err != nil {
+			t.Errorf("%s not written: %v", name, err)
+		}
+	}
+}
+
+func TestImportOfAListWritesNothingWhenOneTagIsBad(t *testing.T) {
+	s, _ := newServer(t)
+	list := "[" + accessoryJSON(t, "tag-a") + `,{"type":"accessory"}]`
+	w := do(s, http.MethodPost, "/import", url.Values{"accessory": {list}})
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "tag 2:") {
+		t.Errorf("status %d, body lacks the tag number", w.Code)
+	}
+	if entries, _ := os.ReadDir(s.KeysDir); len(entries) != 0 {
+		t.Errorf("files written: %v", entries)
+	}
+}
+
+func TestImportRejectsAnEmptyList(t *testing.T) {
+	s, _ := newServer(t)
+	if w := do(s, http.MethodPost, "/import", url.Values{"accessory": {" [] "}}); w.Code != http.StatusBadRequest {
+		t.Errorf("status %d, want 400", w.Code)
+	}
+}
+
 func TestImportRejectsInvalidAccessory(t *testing.T) {
 	s, _ := newServer(t)
 	w := do(s, http.MethodPost, "/import", url.Values{"accessory": {`{"type":"accessory"}`}})
