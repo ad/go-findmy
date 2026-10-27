@@ -231,6 +231,21 @@ func TestWaitHonoursLastPollAcrossRestarts(t *testing.T) {
 	}
 }
 
+func TestStatusShowsTagsAndLastPollRightAfterRestart(t *testing.T) {
+	fx := newPollFixture(t, signedIn)
+	last := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	fx.s.poll(context.Background(), last)
+
+	restarted := newService(fx.keysDir, fx.s.dataDir, fx.s.fetcher, fx.s.acct, fx.pub)
+	st := restarted.Status()
+	if len(st.Tags) != 1 || st.Tags[0].File != "tag.keys" {
+		t.Errorf("tags %+v, want tag.keys", st.Tags)
+	}
+	if !st.LastPoll.Equal(last) {
+		t.Errorf("last poll %v, want %v", st.LastPoll, last)
+	}
+}
+
 func TestPollIntervalHasA15MinuteFloor(t *testing.T) {
 	for minutes, want := range map[int]time.Duration{0: 15 * time.Minute, 5: 15 * time.Minute, 30: 30 * time.Minute} {
 		if got := pollInterval(minutes); got != want {

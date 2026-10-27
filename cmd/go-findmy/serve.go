@@ -67,6 +67,12 @@ func newService(keysDir, dataDir string, f *findmy.Fetcher, acct *icloud.Account
 			s.names = map[string]string{}
 		}
 	}
+	s.status.LastPoll = s.lastPoll()
+	if tags, err := loadTags(keysDir); err != nil {
+		log.Print(err)
+	} else {
+		s.setTags(tags)
+	}
 	return s
 }
 
@@ -155,15 +161,16 @@ func (s *service) Status() web.Status {
 }
 
 func (s *service) wait(interval time.Duration, now time.Time) time.Duration {
+	return max(s.lastPoll().Add(interval).Sub(now), 0)
+}
+
+func (s *service) lastPoll() time.Time {
 	data, err := os.ReadFile(filepath.Join(s.dataDir, lastPollFile))
 	if err != nil {
-		return 0
+		return time.Time{}
 	}
-	last, err := time.Parse(time.RFC3339, strings.TrimSpace(string(data)))
-	if err != nil {
-		return 0
-	}
-	return max(last.Add(interval).Sub(now), 0)
+	last, _ := time.Parse(time.RFC3339, strings.TrimSpace(string(data)))
+	return last
 }
 
 func (s *service) poll(ctx context.Context, now time.Time) {
