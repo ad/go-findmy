@@ -19,6 +19,10 @@ class FakeMachine:
         self.calls = 0
         self.fail = None
         self.mid = "mid"
+        self.saved = 0
+
+    def _save_store(self):
+        self.saved += 1
 
     def provision(self):
         (self.state / "identity.json").write_text("{}")
@@ -86,6 +90,17 @@ class SidecarTest(unittest.TestCase):
         self.assertEqual(self.call("GET", "/headers"), (200, {"X-Apple-I-MD": "otp1", "X-Apple-I-MD-M": "mid"}))
         self.assertEqual(self.call("GET", "/headers")[1]["X-Apple-I-MD"], "otp2")
         self.assertEqual(FakeMachine.built, 1)
+
+    def test_spent_machine_is_saved_and_replaced_before_the_next_headers(self):
+        self.provision()
+        self.sidecar._spent = lambda machine: machine.calls >= 2
+        self.call("GET", "/headers")
+        first = self.sidecar._machine
+        self.call("GET", "/headers")
+        self.assertIs(self.sidecar._machine, first)
+        self.assertEqual(self.call("GET", "/headers")[1]["X-Apple-I-MD"], "otp1")
+        self.assertEqual(first.saved, 1)
+        self.assertEqual(FakeMachine.built, 2)
 
     def test_coreadi_system_exit_is_an_error_reply_not_a_dead_sidecar(self):
         self.provision()

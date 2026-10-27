@@ -19,10 +19,11 @@ class NotProvisioned(Exception):
 
 
 class Sidecar:
-    def __init__(self, state, new_machine, new_resyncer):
+    def __init__(self, state, new_machine, new_resyncer, spent=lambda machine: False):
         self.state = Path(state)
         self._new_machine = new_machine
         self._new_resyncer = new_resyncer
+        self._spent = spent
         self._machine = None
         self._lock = threading.Lock()
 
@@ -31,6 +32,10 @@ class Sidecar:
 
     def headers(self):
         with self._lock:
+            if self._machine is not None and self._spent(self._machine):
+                # Save before the emulator is dropped: a resync leaves its store unsaved until the next OTP.
+                self._machine._save_store()
+                self._machine = None
             if self._machine is None:
                 if not self.provisioned():
                     raise NotProvisioned(f"{self.state} is not provisioned")
@@ -107,13 +112,19 @@ def main():
     args = ap.parse_args()
 
     sys.path.insert(0, str(Path(args.osfe) / "tools" / "machoadi"))
+    from harness import HEAP_ADDRESS, HEAP_SIZE
     from mac_anisette import MacAnisette
     from resync import Resyncer
+
+    def heap_spent(machine):
+        # CoreADI's malloc is a bump allocator and its free does nothing: every OTP costs the emulated
+        # machine ~2 MiB of a 16 MiB heap, and past that its writes fault. Replace it at half.
+        return machine.adi.harness._heap_cur - HEAP_ADDRESS > HEAP_SIZE // 2
 
     if args.command == "provision":
         print(json.dumps(provision(args.state, MacAnisette)))
         return
-    serve(Sidecar(args.state, MacAnisette, Resyncer), args.port).serve_forever()
+    serve(Sidecar(args.state, MacAnisette, Resyncer, heap_spent), args.port).serve_forever()
 
 
 if __name__ == "__main__":
