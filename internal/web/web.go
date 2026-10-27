@@ -40,6 +40,7 @@ type TagStatus struct {
 }
 
 type Status struct {
+	AppleID       string
 	LoginRequired bool
 	Cooldown      string
 	NeedLogin     string
@@ -56,7 +57,8 @@ type Server struct {
 	// Delete removes the tag kept in the key file and returns its name.
 	Delete func(file string) (name string, err error)
 	// Rename gives the tag kept in the key file a new name; an empty name restores the default.
-	Rename func(file, name string) error
+	Rename  func(file, name string) error
+	SignOut func() error
 	// Location is the time zone the page shows times in; nil means UTC.
 	Location *time.Location
 }
@@ -89,6 +91,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && r.URL.Path == "/cancel":
 		s.Login.Cancel()
 		s.render(w, http.StatusOK, "")
+	case r.Method == http.MethodPost && r.URL.Path == "/logout":
+		if err := s.SignOut(); err != nil {
+			s.render(w, http.StatusInternalServerError, "Sign-out failed: "+err.Error())
+			return
+		}
+		s.render(w, http.StatusOK, "Signed out. Polling stops until you sign in again.")
 	case r.Method == http.MethodPost && r.URL.Path == "/import":
 		s.importAccessory(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/rename":

@@ -13,6 +13,7 @@ import (
 	"net/http/cookiejar"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -124,7 +125,7 @@ func (a *Account) cooling() error {
 }
 
 // Refusals persist across restarts: a retry loop is what locked the user's Apple ID.
-func (a *Account) settle(err error, auto bool) error {
+func (a *Account) settle(err error, auto bool, appleID string) error {
 	if err == nil || errors.Is(err, ErrCooldown) {
 		return err
 	}
@@ -132,10 +133,13 @@ func (a *Account) settle(err error, auto bool) error {
 		a.st.CooldownUntil = a.now().Add(cooldown)
 	}
 	var refused *AppleError
+	other := a.st.AppleID != "" && !strings.EqualFold(appleID, a.st.AppleID)
 	switch {
 	case errors.Is(err, ErrThrottled), errors.Is(err, ErrLocked), errors.Is(err, ErrBadPassword):
 		a.st.CooldownUntil = a.now().Add(cooldown)
-		a.st.NeedLogin = err.Error()
+		if !other {
+			a.st.NeedLogin = err.Error()
+		}
 	case auto && (errors.As(err, &refused) || errors.Is(err, errSecondFactor)):
 		a.st.NeedLogin = err.Error()
 	}
@@ -153,6 +157,20 @@ func (a *Account) Refused(err error) error {
 	defer a.mu.Unlock()
 	a.st.CooldownUntil = a.now().Add(cooldown)
 	return errors.Join(err, a.save())
+}
+
+func (a *Account) AppleID() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.st.AppleID
+}
+
+func (a *Account) Logout() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	// Apple throttles the machine, not the Apple ID, so the cooldown outlives the account.
+	a.st = state{CooldownUntil: a.st.CooldownUntil}
+	return a.save()
 }
 
 func (a *Account) SearchPartyAuth() (dsid, token string, err error) {
@@ -173,12 +191,12 @@ func (a *Account) Login(ctx context.Context, appleID, password string) (*SecondF
 	digest := sha256.Sum256([]byte(password))
 	r, err := a.authenticate(ctx, appleID, digest[:])
 	if err != nil {
-		return nil, a.settle(err, false)
+		return nil, a.settle(err, false, appleID)
 	}
 	if r.secondFactor {
 		return &SecondFactor{a: a, appleID: appleID, digest: digest[:], adsid: r.adsid, idms: r.idms, TrustedDevice: r.trustedDevice}, nil
 	}
-	return nil, a.settle(a.finish(ctx, appleID, digest[:], r), false)
+	return nil, a.settle(a.finish(ctx, appleID, digest[:], r), false, appleID)
 }
 
 var errSecondFactor = errors.New("icloud: Apple asks for a second factor")
@@ -208,7 +226,7 @@ func (a *Account) Relogin(ctx context.Context) error {
 		err = a.finish(ctx, a.st.AppleID, a.st.PasswordSHA256, r)
 	}
 	if err != nil {
-		return a.settle(err, true)
+		return a.settle(err, true, a.st.AppleID)
 	}
 	a.st.ReloginAt = a.now()
 	return a.save()
@@ -245,7 +263,7 @@ func (sf *SecondFactor) run(ctx context.Context, step func() error, done bool) e
 			err = sf.a.finish(ctx, sf.appleID, sf.digest, r)
 		}
 	}
-	return sf.a.settle(err, false)
+	return sf.a.settle(err, false, sf.appleID)
 }
 
 func (sf *SecondFactor) RequestTrustedDeviceCode(ctx context.Context) error {

@@ -64,7 +64,7 @@ func newServer(t *testing.T) (*Server, *fakeLogin) {
 
 func signedIn(s *Server, tags []TagStatus) {
 	s.Status = func() Status {
-		return Status{LastPoll: time.Date(2026, 10, 26, 11, 0, 0, 0, time.UTC), Tags: tags}
+		return Status{AppleID: "me@example.com", LastPoll: time.Date(2026, 10, 26, 11, 0, 0, 0, time.UTC), Tags: tags}
 	}
 }
 
@@ -149,8 +149,26 @@ func TestSignedInPageShowsTagsAndImport(t *testing.T) {
 	signedIn(s, tags)
 	body := do(s, http.MethodGet, "/", nil).Body.String()
 	shows(t, body,
-		[]string{"Signed in", "Keys", "52.5", "no report yet", `action="import"`, "<summary>Add a tag</summary>", "<summary>Account</summary>"},
-		[]string{`action="code"`, `class="steps"`})
+		[]string{"Signed in", "Keys", "52.5", "no report yet", `action="import"`, "<summary>Add a tag</summary>", "<summary>Account</summary>", "me@example.com", `action="logout"`},
+		[]string{`action="code"`, `class="steps"`, `action="login"`})
+}
+
+func TestSignOut(t *testing.T) {
+	s, _ := newServer(t)
+	signedIn(s, tags)
+	fail := errors.New("disk full")
+	called := 0
+	s.SignOut = func() error {
+		called++
+		return fail
+	}
+	if w := do(s, http.MethodPost, "/logout", nil); w.Code != http.StatusInternalServerError || !strings.Contains(w.Body.String(), "disk full") {
+		t.Errorf("failed sign-out: status %d, body lacks the error", w.Code)
+	}
+	fail = nil
+	if w := do(s, http.MethodPost, "/logout", nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Signed out.") || called != 2 {
+		t.Errorf("status %d, SignOut called %d times", w.Code, called)
+	}
 }
 
 func TestSignedInPageWithoutTagsLeadsToImport(t *testing.T) {

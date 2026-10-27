@@ -134,6 +134,65 @@ func TestRefusalsStopWithCooldownOnDisk(t *testing.T) {
 	}
 }
 
+func TestFailedLoginToAnotherAppleIDKeepsTheAccount(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		complete func() (int, map[string]any)
+		want     error
+	}{
+		{"429", httpStatus(429), ErrThrottled},
+		{"wrong password", status(map[string]any{"ec": -22406, "hsc": 401}), ErrBadPassword},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			apple := newFakeApple(t, "hunter2")
+			_, dir := loggedIn(t, apple, &fakeAnisette{})
+			clk := &clock{t: time.Date(2026, 10, 26, 18, 0, 0, 0, time.UTC)}
+			a := apple.account(t, dir, &fakeAnisette{})
+			a.now = clk.now
+			apple.completeStatus = tc.complete
+
+			if _, err := a.Login(ctx, "other@example.com", "hunter2"); !errors.Is(err, tc.want) {
+				t.Fatalf("Login = %v, want %v", err, tc.want)
+			}
+			if err := a.Cooldown(); !errors.Is(err, ErrCooldown) {
+				t.Errorf("Cooldown = %v, want ErrCooldown", err)
+			}
+
+			clk.t = clk.t.Add(46 * time.Minute)
+			b := apple.account(t, dir, &fakeAnisette{})
+			b.now = clk.now
+			if err := b.Cooldown(); err != nil {
+				t.Errorf("Cooldown after 46 min = %v", err)
+			}
+			if _, _, err := b.SearchPartyAuth(); err != nil {
+				t.Errorf("SearchPartyAuth = %v, the stored account was stopped", err)
+			}
+		})
+	}
+}
+
+func TestLogoutForgetsTheAccountButKeepsTheCooldown(t *testing.T) {
+	apple := newFakeApple(t, "hunter2")
+	_, dir := loggedIn(t, apple, &fakeAnisette{})
+	a := apple.account(t, dir, &fakeAnisette{})
+	if err := a.Refused(errors.New("refused")); err == nil {
+		t.Fatal("Refused returned nil")
+	}
+	if err := a.Logout(); err != nil {
+		t.Fatal(err)
+	}
+	b := apple.account(t, dir, &fakeAnisette{})
+	if _, _, err := b.SearchPartyAuth(); !errors.Is(err, ErrNeedLogin) {
+		t.Errorf("SearchPartyAuth after logout = %v, want ErrNeedLogin", err)
+	}
+	if id := b.AppleID(); id != "" {
+		t.Errorf("AppleID after logout = %q", id)
+	}
+	if err := b.Cooldown(); !errors.Is(err, ErrCooldown) {
+		t.Errorf("Cooldown after logout = %v, want ErrCooldown", err)
+	}
+}
+
 func TestAutoReloginIsOneAttempt(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

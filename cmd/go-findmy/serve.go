@@ -143,6 +143,7 @@ func (s *service) Status() web.Status {
 			st.Tags[i].Entity, st.Tags[i].DeviceID = e.EntityID, e.DeviceID
 		}
 	}
+	st.AppleID = s.acct.AppleID()
 	if err := s.acct.Cooldown(); err != nil {
 		st.Cooldown = err.Error()
 	}
@@ -226,6 +227,16 @@ func (s *service) signedIn() {
 	if err := s.setLoginRequired(false); err != nil {
 		log.Print(err)
 	}
+}
+
+func (s *service) SignOut() error {
+	if err := s.acct.Logout(); err != nil {
+		return err
+	}
+	if err := s.setLoginRequired(true); err != nil {
+		log.Print(err)
+	}
+	return nil
 }
 
 func (s *service) setLoginRequired(required bool) error {
@@ -482,7 +493,7 @@ func serve() {
 	}
 	login := &ingressLogin{acct: acct, provision: sc.Provision, signedIn: s.signedIn}
 	go func() {
-		log.Fatal(http.ListenAndServe(ingressAddr, &web.Server{Login: login, KeysDir: s.keysDir, Status: s.Status, Delete: s.Delete, Rename: s.Rename, Location: loc}))
+		log.Fatal(http.ListenAndServe(ingressAddr, &web.Server{Login: login, KeysDir: s.keysDir, Status: s.Status, Delete: s.Delete, Rename: s.Rename, SignOut: s.SignOut, Location: loc}))
 	}()
 
 	log.Printf("polling every %v", interval)

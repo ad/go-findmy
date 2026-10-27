@@ -45,7 +45,8 @@ The first run builds the image and downloads iTunes 12.8.3 from Apple for CoreAD
 - `poll_interval` is in minutes, 15 at least. Polling more often raises the risk of an Apple ban.
 - Each AirTag costs at most 3 requests per poll. A tag without a recent alignment is searched across several polls.
 - After Apple rejects the token, the add-on tries one relogin with the saved password. If Apple refuses it, the add-on stops polling and turns on `binary_sensor.find_my_login_required`. Sign in again in the panel. Any other relogin failure pauses polling for 45 minutes, then the relogin is tried again.
-- After Apple refuses a sign-in (wrong password, locked Apple ID, HTTP 429), nothing is sent to Apple for 45 minutes. The panel shows when that ends.
+- After Apple refuses a sign-in (wrong password, locked Apple ID, HTTP 429), nothing is sent to Apple for 45 minutes. The panel shows when that ends. A refused sign-in with another Apple ID does not stop the saved one: it polls again after the pause.
+- One Apple ID fetches the locations of all tags, also tags of other Apple IDs: import their keys, no second account is needed. To switch the Apple ID, use "Sign out" under Account in the panel, then sign in. Signing out keeps the 45-minute pause.
 
 ## Backups
 
