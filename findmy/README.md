@@ -10,9 +10,9 @@ Shows AirTags and OpenHaystack tags in Home Assistant as `device_tracker` entiti
 ## First start
 
 1. The add-on downloads iTunes 12.8.3 from Apple once, extracts CoreADI into `/data/coreadi` and deletes the installer.
-2. Open the add-on panel and sign in with your Apple ID. Right before the sign-in the add-on provisions an emulated Mac in `/data/anisette`; Apple sees a new Mac on your account.
+2. Open the add-on panel. It shows only the step you are on: Apple ID, then the code, then the tags. Sign in with your Apple ID. Right before the sign-in the add-on provisions an emulated Mac in `/data/anisette`; Apple sees a new Mac on your account.
 3. Enter the 2FA code. A trusted Apple device gets it. With "Code by SMS" ticked, or without a trusted device, the first trusted phone number gets an SMS.
-4. Import each AirTag as JSON in FindMy.py / export-findmy format, see "AirTag keys". OpenHaystack `.keys` files go into `/data/keys`.
+4. Once signed in, the panel lists your tags. Import each AirTag as JSON (paste it or pick the file) in FindMy.py / export-findmy format, see "AirTag keys". OpenHaystack `.keys` files go into `/data/keys`.
 
 ## AirTag keys
 

@@ -19,10 +19,15 @@ import (
 type fakeLogin struct {
 	appleID, password, code string
 	needCode, sms           bool
+	waiting, cancelled      bool
 }
+
+func (l *fakeLogin) Pending() (bool, bool) { return l.sms, l.waiting }
+func (l *fakeLogin) Cancel()               { l.cancelled, l.waiting = true, false }
 
 func (l *fakeLogin) SignIn(_ context.Context, appleID, password string, sms bool) (bool, error) {
 	l.appleID, l.password, l.sms = appleID, password, sms
+	l.waiting = l.needCode
 	return l.needCode, nil
 }
 
@@ -31,7 +36,13 @@ func (l *fakeLogin) SubmitCode(_ context.Context, code string) error {
 	if code != "123456" {
 		return errors.New("wrong code")
 	}
+	l.waiting = false
 	return nil
+}
+
+var tags = []TagStatus{
+	{Name: "Keys", Report: &findmy.Report{Latitude: 52.5, Longitude: 13.4, Accuracy: 25}},
+	{Name: "Bag"},
 }
 
 func newServer(t *testing.T) (*Server, *fakeLogin) {
@@ -45,13 +56,30 @@ func newServer(t *testing.T) (*Server, *fakeLogin) {
 				LoginRequired: true,
 				Cooldown:      "icloud: cooldown until 2026-10-26T12:45:00Z: the Apple ID is locked, unlock it at iforgot.apple.com",
 				LastPoll:      time.Date(2026, 10, 26, 11, 0, 0, 0, time.UTC),
-				Tags: []TagStatus{
-					{Name: "Keys", Report: &findmy.Report{Latitude: 52.5, Longitude: 13.4, Accuracy: 25}},
-					{Name: "Bag"},
-				},
+				Tags:          tags,
 			}
 		},
 	}, l
+}
+
+func signedIn(s *Server, tags []TagStatus) {
+	s.Status = func() Status {
+		return Status{LastPoll: time.Date(2026, 10, 26, 11, 0, 0, 0, time.UTC), Tags: tags}
+	}
+}
+
+func shows(t *testing.T, body string, want, absent []string) {
+	t.Helper()
+	for _, w := range want {
+		if !strings.Contains(body, w) {
+			t.Errorf("page lacks %q", w)
+		}
+	}
+	for _, a := range absent {
+		if strings.Contains(body, a) {
+			t.Errorf("page has %q", a)
+		}
+	}
 }
 
 func do(s *Server, method, path string, form url.Values) *httptest.ResponseRecorder {
@@ -89,15 +117,53 @@ func TestOnlyIngressProxyIsServed(t *testing.T) {
 	}
 }
 
-func TestStatusPageShowsLoginNeededAndTags(t *testing.T) {
+func TestSignedOutPageOffersOnlyTheLoginForm(t *testing.T) {
 	s, _ := newServer(t)
-	w := do(s, http.MethodGet, "/", nil)
-	body := w.Body.String()
-	for _, want := range []string{"Login required", "until 2026-10-26T12:45:00Z", "iforgot.apple.com", "Keys", "52.5", "Bag", `action="login"`, `action="code"`, `action="import"`} {
-		if !strings.Contains(body, want) {
-			t.Errorf("page lacks %q", want)
-		}
+	body := do(s, http.MethodGet, "/", nil).Body.String()
+	shows(t, body,
+		[]string{"Sign-in required", `action="login"`, `name="sms"`, "until 2026-10-26T12:45:00Z", "iforgot.apple.com", " disabled"},
+		[]string{`action="code"`, `action="import"`, `action="cancel"`, "Keys"})
+}
+
+func TestPageAsksForTheCodeOnlyWhileSignInWaits(t *testing.T) {
+	s, l := newServer(t)
+	l.waiting = true
+	body := do(s, http.MethodGet, "/", nil).Body.String()
+	shows(t, body,
+		[]string{"Waiting for the code", `action="code"`, `action="cancel"`, "trusted device"},
+		[]string{`action="login"`, `action="import"`})
+
+	l.sms = true
+	if body := do(s, http.MethodGet, "/", nil).Body.String(); !strings.Contains(body, "by SMS") {
+		t.Error("the page does not say the code went out by SMS")
 	}
+
+	w := do(s, http.MethodPost, "/cancel", nil)
+	if !l.cancelled || strings.Contains(w.Body.String(), `action="code"`) || !strings.Contains(w.Body.String(), `action="login"`) {
+		t.Errorf("cancelled %v; the page must go back to the login form", l.cancelled)
+	}
+}
+
+func TestSignedInPageShowsTagsAndImport(t *testing.T) {
+	s, _ := newServer(t)
+	signedIn(s, tags)
+	body := do(s, http.MethodGet, "/", nil).Body.String()
+	shows(t, body,
+		[]string{"Signed in", "Keys", "52.5", "no report yet", `action="import"`, "<summary>Add a tag</summary>", "<summary>Account</summary>"},
+		[]string{`action="code"`, `class="steps"`})
+}
+
+func TestSignedInPageWithoutTagsLeadsToImport(t *testing.T) {
+	s, _ := newServer(t)
+	signedIn(s, nil)
+	body := do(s, http.MethodGet, "/", nil).Body.String()
+	shows(t, body, []string{"Add your first tag", `class="steps"`, `action="import"`}, []string{"<summary>Add a tag</summary>"})
+}
+
+func TestPageKeepsTheHomeAssistantTheme(t *testing.T) {
+	s, _ := newServer(t)
+	body := do(s, http.MethodGet, "/", nil).Body.String()
+	shows(t, body, []string{"prefers-color-scheme:dark", "--primary-background-color", "--primary-text-color"}, nil)
 }
 
 func TestImportWritesValidatedAccessoryInsideKeysDir(t *testing.T) {
@@ -150,7 +216,7 @@ func TestLoginThenCode(t *testing.T) {
 	if l.appleID != "me@example.com" || l.password != "pw" {
 		t.Errorf("SignIn got %q %q", l.appleID, l.password)
 	}
-	if !strings.Contains(w.Body.String(), "Enter the code") {
+	if !strings.Contains(w.Body.String(), `action="code"`) {
 		t.Errorf("no prompt for the 2FA code")
 	}
 
@@ -166,9 +232,6 @@ func TestLoginThenCode(t *testing.T) {
 
 func TestLoginCanAskForSMS(t *testing.T) {
 	s, l := newServer(t)
-	if !strings.Contains(do(s, http.MethodGet, "/", nil).Body.String(), `name="sms"`) {
-		t.Error("login form has no SMS choice")
-	}
 	do(s, http.MethodPost, "/login", url.Values{"apple_id": {"me@example.com"}, "password": {"pw"}})
 	if l.sms {
 		t.Error("SMS asked without the box ticked")

@@ -60,6 +60,7 @@ func (s *service) Status() web.Status {
 	}
 	if _, _, err := s.acct.SearchPartyAuth(); err != nil {
 		st.NeedLogin = err.Error()
+		st.Reason = strings.TrimPrefix(strings.TrimPrefix(st.NeedLogin, icloud.ErrNeedLogin.Error()), ": ")
 	}
 	return st
 }
@@ -212,6 +213,18 @@ func (l *ingressLogin) requestSMS(ctx context.Context, sf *icloud.SecondFactor) 
 	}
 	l.phoneID = phones[0].ID
 	return sf.RequestSMSCode(ctx, l.phoneID)
+}
+
+func (l *ingressLogin) Pending() (sms, waiting bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.sms, l.pending != nil
+}
+
+func (l *ingressLogin) Cancel() {
+	l.mu.Lock()
+	l.pending = nil
+	l.mu.Unlock()
 }
 
 func (l *ingressLogin) SubmitCode(ctx context.Context, code string) error {

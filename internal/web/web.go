@@ -20,6 +20,10 @@ const ingressProxy = "172.30.32.2"
 type Login interface {
 	SignIn(ctx context.Context, appleID, password string, sms bool) (needCode bool, err error)
 	SubmitCode(ctx context.Context, code string) error
+	// Pending reports whether a sign-in waits for its code, and how the code was sent.
+	Pending() (sms, waiting bool)
+	// Cancel drops the sign-in that waits for a code.
+	Cancel()
 }
 
 type TagStatus struct {
@@ -31,6 +35,7 @@ type Status struct {
 	LoginRequired bool
 	Cooldown      string
 	NeedLogin     string
+	Reason        string // why the session was lost; empty when there was no attempt yet
 	LastPoll      time.Time
 	LastError     string
 	Tags          []TagStatus
@@ -57,7 +62,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case err != nil:
 			s.render(w, http.StatusBadRequest, "Login failed: "+err.Error())
 		case needCode:
-			s.render(w, http.StatusOK, "Enter the code from your trusted device or the SMS.")
+			s.render(w, http.StatusOK, "")
 		default:
 			s.render(w, http.StatusOK, "Signed in.")
 		}
@@ -67,6 +72,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.render(w, http.StatusOK, "Signed in.")
+	case r.Method == http.MethodPost && r.URL.Path == "/cancel":
+		s.Login.Cancel()
+		s.render(w, http.StatusOK, "")
 	case r.Method == http.MethodPost && r.URL.Path == "/import":
 		s.importAccessory(w, r)
 	default:
@@ -101,39 +109,59 @@ var errNoIdentifier = errors.New("accessory: identifier is empty")
 func (s *Server) render(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	if err := page.Execute(w, struct {
-		Status
-		Message string
-	}{s.Status(), message}); err != nil {
+	sms, waiting := s.Login.Pending()
+	v := view{Status: s.Status(), Message: message, Failed: status >= 400, SMS: sms, Waiting: waiting}
+	if err := page.Execute(w, v); err != nil {
 		log.Printf("ingress page: %v", err)
 	}
 }
 
+// view is what the page needs: the status plus the outcome of the last action.
+type view struct {
+	Status
+	Message string
+	Failed  bool
+	Waiting bool // a sign-in waits for its code
+	SMS     bool // the code went out by SMS
+}
+
+// Step is the one thing the user has to do now: sign in, enter the code, or nothing.
+func (v view) Step() string {
+	switch {
+	case v.Waiting:
+		return "code"
+	case v.LoginRequired || v.NeedLogin != "":
+		return "login"
+	}
+	return "ready"
+}
+
+type step struct {
+	Name  string
+	State string // done, current or todo
+}
+
+// Steps is the progress shown until the first tag is on the page; later it is noise.
+func (v view) Steps() []step {
+	names := []string{"Apple ID", "Code", "Tags"}
+	cur := map[string]int{"login": 0, "code": 1, "ready": 2}[v.Step()]
+	if cur == 2 && len(v.Tags) > 0 {
+		return nil
+	}
+	out := make([]step, len(names))
+	for i, n := range names {
+		out[i] = step{n, "todo"}
+		switch {
+		case i < cur:
+			out[i].State = "done"
+		case i == cur:
+			out[i].State = "current"
+		}
+	}
+	return out
+}
+
 // Forms post to relative URLs: Ingress serves the page under a per-session path prefix.
-var page = template.Must(template.New("page").Parse(`<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Find My</title>
-<style>body{font-family:sans-serif;max-width:40rem;margin:1rem auto;padding:0 1rem}
-form{margin:1rem 0}input,textarea{display:block;width:100%;margin:.3rem 0;box-sizing:border-box}
-label{display:block;margin:.3rem 0}label input{display:inline;width:auto}
-.warn{color:#b00}td,th{padding:.2rem .5rem;text-align:left}</style></head><body>
-<h1>Find My</h1>
-{{with .Message}}<p><b>{{.}}</b></p>{{end}}
-{{if .LoginRequired}}<p class="warn">Login required.</p>{{end}}
-{{with .NeedLogin}}<p class="warn">{{.}}</p>{{end}}
-{{with .Cooldown}}<p class="warn">Nothing is sent to Apple: {{.}}</p>{{end}}
-<p>Last poll: {{if .LastPoll.IsZero}}not yet{{else}}{{.LastPoll.Format "2006-01-02 15:04:05 MST"}}{{end}}</p>
-{{with .LastError}}<p class="warn">Last error: {{.}}</p>{{end}}
-<h2>Tags</h2>
-<table><tr><th>Name</th><th>Last seen</th><th>Location</th><th>Accuracy, m</th></tr>
-{{range .Tags}}<tr><td>{{.Name}}</td>{{with .Report}}<td>{{.Time.Format "2006-01-02 15:04 MST"}}</td><td>{{.Latitude}}, {{.Longitude}}</td><td>{{.Accuracy}}</td>{{else}}<td colspan="3">no report</td>{{end}}</tr>
-{{else}}<tr><td colspan="4">No tags yet.</td></tr>{{end}}</table>
-<h2>Apple ID</h2>
-<form method="post" action="login"><input name="apple_id" type="email" placeholder="Apple ID" autocomplete="username" required>
-<input name="password" type="password" placeholder="Password" autocomplete="current-password" required>
-<label><input name="sms" type="checkbox"> Code by SMS instead of a trusted device</label><button>Sign in</button></form>
-<form method="post" action="code"><input name="code" inputmode="numeric" placeholder="2FA code" autocomplete="one-time-code" required><button>Submit code</button></form>
-<h2>Import AirTag JSON</h2>
-<form method="post" action="import"><textarea name="accessory" rows="8" placeholder="FindMy.py / export-findmy accessory JSON" required></textarea><button>Import</button></form>
-</body></html>
-`))
+// The colours come from the Home Assistant theme of the parent page (same origin under
+// Ingress); the prefers-color-scheme values apply when the parent cannot be read.
+var page = template.Must(template.New("page").Parse(pageHTML))
