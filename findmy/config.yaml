@@ -1,6 +1,7 @@
 name: Find My
 version: "0.2.0"
 slug: findmy
+image: ghcr.io/ad/go-findmy-{arch}
 description: AirTags and OpenHaystack tags as device_tracker entities, no Mac needed
 url: https://github.com/ad/go-findmy
 arch:

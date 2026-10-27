@@ -1,0 +1,63 @@
+name: release
+
+# Push a tag vX.Y.Z: the add-on image is built for both arches and pushed to GHCR,
+# then findmy/config.yaml on main gets version X.Y.Z. Supervisor sees the new version
+# only after the images exist, and pulls them instead of building on the device.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  image:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: aarch64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: |
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          echo "base=$(sed -n 's/^  ${{ matrix.arch }}: //p' findmy/build.yaml)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: findmy
+          # the Dockerfile's src stage is replaced by this checkout, no git clone of the tag
+          build-contexts: src=.
+          build-args: BUILD_FROM=${{ steps.meta.outputs.base }}
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/go-findmy-${{ matrix.arch }}:${{ steps.meta.outputs.version }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.arch }},mode=max
+
+  bump:
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - run: |
+          sed -i -E "s/^version: .*/version: \"${GITHUB_REF_NAME#v}\"/" findmy/config.yaml
+          git diff --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "findmy: version ${GITHUB_REF_NAME#v}"
+          git push origin main

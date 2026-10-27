@@ -6,6 +6,8 @@ Locations of AirTags and OpenHaystack tags from Apple's Find My network, without
 
 Add this repository to the add-on store, then install "Find My". Tags show up as `device_tracker` entities over MQTT. Setup, polling and backups: [findmy/README.md](findmy/README.md).
 
+Release: `git tag vX.Y.Z && git push origin vX.Y.Z`. GitHub Actions builds `ghcr.io/ad/go-findmy-{amd64,aarch64}:X.Y.Z`, then sets `version` in `findmy/config.yaml` on main. Home Assistant pulls the image and never builds it. After the first release make both GHCR packages public, or the device cannot pull them.
+
 ## CLI
 
 ```sh

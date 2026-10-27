@@ -1,7 +1,8 @@
 ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-debian:bookworm
 
-# Supervisor builds with findmy/ as the context, so the sources come from the release tag;
-# a local checkout replaces the src stage with --build-context src=.
+# The release workflow builds with findmy/ as the context and --build-context src=. (the checkout
+# of the tag). Without that override the src stage clones the tag, which is what Supervisor would
+# do if config.yaml had no image: line.
 FROM golang:1.27-bookworm AS clone
 ARG BUILD_VERSION
 RUN git clone --depth 1 --branch "v${BUILD_VERSION}" https://github.com/ad/go-findmy /src
