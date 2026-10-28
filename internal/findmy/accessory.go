@@ -250,9 +250,7 @@ func (a *Accessory) pollBatches(now time.Time) []Batch {
 	hi := a.MaxIndex(now)
 	ahead := a.chain(a.skn, hi+1, hi+maxBatchIDs, false)
 	slices.Reverse(ahead)
-	s1, _ := secondaryRange(hi + 1)
-	_, s2 := secondaryRange(hi + maxBatchIDs)
-	return append([]Batch{{Primary: ahead, Secondary: a.chain(a.sks, s1, s2, true)}}, a.Batches(now)...)
+	return append([]Batch{{Primary: ahead}}, a.Batches(now)...)
 }
 
 // FindMy.py's guess, unconfirmed against Apple.

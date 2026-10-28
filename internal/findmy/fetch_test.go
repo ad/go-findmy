@@ -364,6 +364,42 @@ func TestFetchAccessoryFindsKeysAboveMaxIndex(t *testing.T) {
 	}
 }
 
+func TestFetchAccessoryOldSecondaryDoesNotHideFreshPrimary(t *testing.T) {
+	v := loadVectors(t)
+	a := loadAccessory(t, v.FreshAccessory)
+	now := mustTime(t, v.Batches.Now)
+	hi := a.MaxIndex(now)
+	s, _ := secondaryRange(hi)
+	old, fresh := a.chain(a.sks, s, s, true)[0], a.chain(a.skn, hi, hi, false)[0]
+	at := now.Add(-20 * time.Minute).Truncate(time.Second).UTC()
+
+	f, _ := newTestFetcher(t, func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Fetch []struct {
+				PrimaryIDs   []string `json:"primaryIds"`
+				SecondaryIDs []string `json:"secondaryIds"`
+			} `json:"fetch"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		payload := []map[string]any{}
+		if slices.Contains(body.Fetch[0].SecondaryIDs, old.ID) {
+			payload = append(payload, map[string]any{"id": old.ID, "locationInfo": []string{sealReport(t, old.Private, at.Add(-15*time.Hour), 1)}})
+		}
+		if slices.Contains(body.Fetch[0].PrimaryIDs, fresh.ID) {
+			payload = append(payload, map[string]any{"id": fresh.ID, "locationInfo": []string{sealReport(t, fresh.Private, at, 2)}})
+		}
+		json.NewEncoder(w).Encode(map[string]any{"acsnLocations": map[string]any{"statusCode": "200", "locationPayload": payload}})
+	})
+
+	got, err := f.LatestAccessory(context.Background(), a, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || !got.Time.Equal(at) {
+		t.Fatalf("latest %+v, want the primary report at %v", got, at)
+	}
+}
+
 func TestFetchRejectsBadAppleStatus(t *testing.T) {
 	f, _ := newTestFetcher(t, func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, `{"acsnLocations":{"statusCode":"500"}}`)

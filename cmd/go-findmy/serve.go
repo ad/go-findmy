@@ -232,6 +232,10 @@ func (s *service) fetchAndPublish(ctx context.Context, now time.Time) error {
 		if r := reports[t.name]; r != nil {
 			errs = append(errs, s.whilePresent(t, func() error {
 				s.mu.Lock()
+				if old := s.reports[t.name]; old != nil && r.Time.Before(old.Time) {
+					s.mu.Unlock()
+					return nil
+				}
 				s.reports[t.name] = r
 				s.mu.Unlock()
 				return ha.PublishLocation(s.pub, t.haTag().ID, *r)
