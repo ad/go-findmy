@@ -107,68 +107,6 @@ func (f *Fetcher) LatestStatic(ctx context.Context, keys []Key, now time.Time) (
 // An unaligned accessory spans up to ~120 batches; fetching all of them every poll risks a ban.
 const MaxAccessoryRequests = 3
 
-func (f *Fetcher) LatestAccessory(ctx context.Context, a *Accessory, now time.Time) (*Report, error) {
-	latest, err := f.latestAccessory(ctx, a, now)
-	if err != nil {
-		return nil, err
-	}
-	if swept := f.sweepSecondary(ctx, a, now); swept != nil && (latest == nil || swept.Time.After(latest.Time)) {
-		return swept, nil
-	}
-	return latest, nil
-}
-
-// A tag away from its owner showed in Find My but on none of the secondary keys secondaryRange gives.
-// shortcut: asks for every secondary key up to 400 days past the guess on each poll; narrow it once the log shows the offset.
-func (f *Fetcher) sweepSecondary(ctx context.Context, a *Accessory, now time.Time) *Report {
-	keys := a.chain(a.sks, 0, a.MaxIndex(now)/96+400, true)
-	var entries []fetchEntry
-	for c := range slices.Chunk(keys, maxBatchIDs) {
-		entries = append(entries, newEntry(nil, c, now))
-	}
-	reports, err := f.fetch(ctx, entries, keys)
-	if err != nil {
-		log.Printf("debug %s: secondary sweep: %v", a.Identifier(), err)
-		return nil
-	}
-	newest := newestOf(reports)
-	if newest == nil {
-		log.Printf("debug %s: secondary sweep of 0..%d: no reports", a.Identifier(), len(keys)-1)
-		return nil
-	}
-	log.Printf("debug %s: secondary sweep of 0..%d: %d reports, newest %s at secondary index %d (primary %d/96 = %d): %s",
-		a.Identifier(), len(keys)-1, len(reports), newest.Time.Format(time.RFC3339), newest.key.Index, a.MaxIndex(now), a.MaxIndex(now)/96, timeline(reports))
-
-	// FindMy.py #274: a 2nd generation tag ran past this ceiling, and its fresh reports sat on the keys above it.
-	hi := a.MaxIndex(now)
-	above := a.chain(a.skn, hi+1, hi+3*maxBatchIDs, false)
-	entries = entries[:0]
-	for c := range slices.Chunk(above, maxBatchIDs) {
-		entries = append(entries, newEntry(c, nil, now))
-	}
-	recent, err := f.fetch(ctx, entries, above)
-	if err != nil {
-		log.Printf("debug %s: primary above the ceiling %d: %v", a.Identifier(), hi, err)
-		return &newest.Report
-	}
-	log.Printf("debug %s: primary %d..%d above the ceiling, %d steps of 15 minutes since pairing at %s: %d reports: %s",
-		a.Identifier(), hi+1, hi+3*maxBatchIDs, int(now.Sub(a.pairedAt)/keyInterval), a.pairedAt.Format(time.RFC3339), len(recent), timeline(recent))
-	if r := newestOf(recent); r != nil && r.Time.After(newest.Time) {
-		return &r.Report
-	}
-	return &newest.Report
-}
-
-func newestOf(reports []keyedReport) *keyedReport {
-	var newest *keyedReport
-	for _, r := range reports {
-		if newest == nil || r.Time.After(newest.Time) {
-			newest = &r
-		}
-	}
-	return newest
-}
-
 func timeline(reports []keyedReport) string {
 	out := make([]string, len(reports))
 	for i, r := range reports {
@@ -178,12 +116,12 @@ func timeline(reports []keyedReport) string {
 	return strings.Join(out, " ")
 }
 
-func (f *Fetcher) latestAccessory(ctx context.Context, a *Accessory, now time.Time) (*Report, error) {
+func (f *Fetcher) LatestAccessory(ctx context.Context, a *Accessory, now time.Time) (*Report, error) {
 	if f.scanFrom == nil {
 		f.scanFrom = map[string]int{}
 	}
 	id := a.Identifier()
-	batches := a.Batches(now)
+	batches := a.pollBatches(now)
 	hi := batches[0].Primary[0].Index
 	from := f.scanFrom[id] % len(batches)
 	for n, b := range batches[from:min(from+MaxAccessoryRequests, len(batches))] {

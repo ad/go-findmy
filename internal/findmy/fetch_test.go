@@ -284,7 +284,7 @@ func TestFetchAccessoryStopsAtFirstBatchWithReports(t *testing.T) {
 	v := loadVectors(t)
 	a := loadAccessory(t, v.FreshAccessory)
 	now := mustTime(t, v.Batches.Now)
-	batches := a.Batches(now)
+	batches := a.pollBatches(now)
 	if len(batches) < 3 {
 		t.Fatalf("%d batches, the test needs 3", len(batches))
 	}
@@ -310,7 +310,7 @@ func TestFetchAccessoryStopsAtFirstBatchWithReports(t *testing.T) {
 		))
 	})
 
-	got, err := f.latestAccessory(context.Background(), a, now)
+	got, err := f.LatestAccessory(context.Background(), a, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,45 +325,42 @@ func TestFetchAccessoryStopsAtFirstBatchWithReports(t *testing.T) {
 	}
 }
 
-func TestFetchAccessorySweepFindsSecondaryKeyFarFromGuess(t *testing.T) {
+func TestFetchAccessoryFindsKeysAboveMaxIndex(t *testing.T) {
 	v := loadVectors(t)
 	a := loadAccessory(t, v.FreshAccessory)
 	now := mustTime(t, v.Batches.Now)
-	far := a.MaxIndex(now)/96 + 300
-	target := a.chain(a.sks, far, far, true)[0]
-	at := now.Add(-time.Hour).Truncate(time.Second).UTC()
-	alignDate, alignIndex := a.alignmentDate, a.alignmentIndex
+	hi := a.MaxIndex(now)
+	stale, fresh := a.chain(a.skn, hi, hi, false)[0], a.chain(a.skn, hi+29, hi+29, false)[0]
+	at := now.Add(-20 * time.Minute).Truncate(time.Second).UTC()
 
 	requests := 0
 	f, _ := newTestFetcher(t, func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Fetch []struct {
-				SecondaryIDs []string `json:"secondaryIds"`
+				PrimaryIDs []string `json:"primaryIds"`
 			} `json:"fetch"`
 		}
 		json.NewDecoder(r.Body).Decode(&body)
 		requests++
-		for _, e := range body.Fetch {
-			if slices.Contains(e.SecondaryIDs, target.ID) {
-				io.WriteString(w, payloadResponse(target.ID, sealReport(t, target.Private, at, 3)))
-				return
-			}
+		switch ids := body.Fetch[0].PrimaryIDs; {
+		case slices.Contains(ids, fresh.ID):
+			io.WriteString(w, payloadResponse(fresh.ID, sealReport(t, fresh.Private, at, 1)))
+		case slices.Contains(ids, stale.ID):
+			io.WriteString(w, payloadResponse(stale.ID, sealReport(t, stale.Private, at.Add(-3*time.Hour), 2)))
+		default:
+			io.WriteString(w, `{"acsnLocations":{"statusCode":"200","locationPayload":[]}}`)
 		}
-		io.WriteString(w, `{"acsnLocations":{"statusCode":"200","locationPayload":[]}}`)
 	})
 
 	got, err := f.LatestAccessory(context.Background(), a, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if requests != MaxAccessoryRequests+2 {
-		t.Fatalf("%d requests, want %d batches, the sweep and the probe", requests, MaxAccessoryRequests)
+	if requests != 1 || got == nil || !got.Time.Equal(at) {
+		t.Fatalf("%d requests, latest %+v; want the report at %v from the first request", requests, got, at)
 	}
-	if got == nil || !got.Time.Equal(at) {
-		t.Errorf("latest %+v, want a report at %v", got, at)
-	}
-	if a.alignmentIndex != alignIndex || !a.alignmentDate.Equal(alignDate) {
-		t.Errorf("alignment moved to %d at %v by a secondary report", a.alignmentIndex, a.alignmentDate)
+	if a.alignmentIndex != hi+29 {
+		t.Errorf("alignment %d, want %d", a.alignmentIndex, hi+29)
 	}
 }
 
@@ -380,7 +377,7 @@ func TestFetchAccessoryRetriesSameBatchesAfterError(t *testing.T) {
 	v := loadVectors(t)
 	a := loadAccessory(t, v.FreshAccessory)
 	now := mustTime(t, v.Batches.Now)
-	newest := a.Batches(now)[0].Primary[0].ID
+	newest := a.pollBatches(now)[0].Primary[0].ID
 
 	fail := true
 	var firstIDs []string
@@ -422,7 +419,7 @@ func TestFetchAccessoryCapsRequestsAndResumesNextPoll(t *testing.T) {
 	data, _ := json.Marshal(raw)
 	a := loadAccessory(t, data)
 
-	batches := a.Batches(now)
+	batches := a.pollBatches(now)
 	if len(batches) < 2*MaxAccessoryRequests {
 		t.Fatalf("%d batches, the test needs %d", len(batches), 2*MaxAccessoryRequests)
 	}
@@ -445,7 +442,7 @@ func TestFetchAccessoryCapsRequestsAndResumesNextPoll(t *testing.T) {
 	})
 	ctx := context.Background()
 
-	got, err := f.latestAccessory(ctx, a, now)
+	got, err := f.LatestAccessory(ctx, a, now)
 	if err != nil || got != nil {
 		t.Fatalf("poll 1: %+v, %v; want no report", got, err)
 	}
@@ -455,7 +452,7 @@ func TestFetchAccessoryCapsRequestsAndResumesNextPoll(t *testing.T) {
 	}
 
 	firstIDs = nil
-	got, err = f.latestAccessory(ctx, a, now)
+	got, err = f.LatestAccessory(ctx, a, now)
 	if err != nil || got == nil {
 		t.Fatalf("poll 2: %+v, %v; want a report", got, err)
 	}
@@ -465,10 +462,10 @@ func TestFetchAccessoryCapsRequestsAndResumesNextPoll(t *testing.T) {
 	}
 
 	firstIDs = nil
-	if _, err := f.latestAccessory(ctx, a, now); err != nil {
+	if _, err := f.LatestAccessory(ctx, a, now); err != nil {
 		t.Fatal(err)
 	}
-	if len(firstIDs) == 0 || firstIDs[0] != a.Batches(now)[0].Primary[0].ID {
+	if len(firstIDs) == 0 || firstIDs[0] != a.pollBatches(now)[0].Primary[0].ID {
 		t.Errorf("poll 3 did not restart from the newest batch after a hit")
 	}
 }
