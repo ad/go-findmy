@@ -24,6 +24,7 @@ type Accessory struct {
 	sks            []byte
 	alignmentDate  time.Time
 	alignmentIndex int
+	pairedAt       time.Time
 	raw            map[string]json.RawMessage
 }
 
@@ -85,6 +86,7 @@ func ParseAccessory(data []byte) (*Accessory, error) {
 		return nil, errors.New("accessory: paired_at is empty")
 	}
 
+	a.pairedAt = f.PairedAt
 	a.alignmentDate = f.PairedAt
 	if f.AlignDate != nil {
 		a.alignmentDate = *f.AlignDate
@@ -103,6 +105,8 @@ func (a *Accessory) Identifier() string { return a.text("identifier") }
 func (a *Accessory) Name() string { return a.text("name") }
 
 func (a *Accessory) Model() string { return a.text("model") }
+
+func (a *Accessory) PairedAt() time.Time { return a.pairedAt }
 
 func (a *Accessory) text(field string) string {
 	var s string

@@ -139,23 +139,20 @@ func (f *Fetcher) sweepSecondary(ctx context.Context, a *Accessory, now time.Tim
 	log.Printf("debug %s: secondary sweep of 0..%d: %d reports, newest %s at secondary index %d (primary %d/96 = %d): %s",
 		a.Identifier(), len(keys)-1, len(reports), newest.Time.Format(time.RFC3339), newest.key.Index, a.MaxIndex(now), a.MaxIndex(now)/96, timeline(reports))
 
-	// Every response held exactly 8 reports while Find My shows newer ones: is that a cap per entry?
-	from := max(a.alignmentIndex, a.MaxIndex(now)-24)
-	probe := append(a.chain(a.skn, from, a.MaxIndex(now), false), a.chain(a.sks, max(newest.key.Index-1, 0), newest.key.Index+1, true)...)
+	// FindMy.py #274: a 2nd generation tag ran past this ceiling, and its fresh reports sat on the keys above it.
+	hi := a.MaxIndex(now)
+	above := a.chain(a.skn, hi+1, hi+3*maxBatchIDs, false)
 	entries = entries[:0]
-	for _, k := range probe {
-		if k.Secondary {
-			entries = append(entries, newEntry(nil, []Key{k}, now))
-		} else {
-			entries = append(entries, newEntry([]Key{k}, nil, now))
-		}
+	for c := range slices.Chunk(above, maxBatchIDs) {
+		entries = append(entries, newEntry(c, nil, now))
 	}
-	recent, err := f.fetch(ctx, entries, probe)
+	recent, err := f.fetch(ctx, entries, above)
 	if err != nil {
-		log.Printf("debug %s: one key per entry, primary %d..%d and secondary around %d: %v", a.Identifier(), from, a.MaxIndex(now), newest.key.Index, err)
+		log.Printf("debug %s: primary above the ceiling %d: %v", a.Identifier(), hi, err)
 		return &newest.Report
 	}
-	log.Printf("debug %s: one key per entry, primary %d..%d and secondary around %d: %d reports: %s", a.Identifier(), from, a.MaxIndex(now), newest.key.Index, len(recent), timeline(recent))
+	log.Printf("debug %s: primary %d..%d above the ceiling, %d steps of 15 minutes since pairing at %s: %d reports: %s",
+		a.Identifier(), hi+1, hi+3*maxBatchIDs, int(now.Sub(a.pairedAt)/keyInterval), a.pairedAt.Format(time.RFC3339), len(recent), timeline(recent))
 	if r := newestOf(recent); r != nil && r.Time.After(newest.Time) {
 		return &r.Report
 	}
