@@ -43,13 +43,32 @@ button:disabled{opacity:.5;cursor:not-allowed}
 details>summary{cursor:pointer;font-weight:600;list-style-position:inside}
 details[open]>summary{margin-bottom:.5rem}
 .tags{list-style:none;margin:0;padding:0}
-.tags li{padding:.6rem 0;border-top:1px solid var(--line)}
-.tag{display:grid;gap:.1rem}
-.tag b,.tag a{overflow-wrap:anywhere}
-.tag-actions{display:flex;flex-wrap:wrap;gap:0 1.25rem;margin-top:.3rem;font-size:.9rem}
+.tags li{padding:.85rem 0;border-top:1px solid var(--line)}
+.tag-head{display:flex;align-items:center;gap:.6rem}
+.tag-head b{flex:1;min-width:0;font-size:1.05rem;overflow-wrap:anywhere}
+.dot{flex:none;width:.6rem;height:.6rem;border-radius:50%;background:var(--line)}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}
+.age{flex:none;color:var(--muted);font-size:.9rem;white-space:nowrap}
+.tag-meta,.tag-actions{display:flex;flex-wrap:wrap;gap:.1rem 1rem;margin:.2rem 0 0 1.2rem;font-size:.9rem}
+.more{margin:.3rem 0 0 1.2rem;font-size:.9rem}
+.more>summary{color:var(--muted);font-weight:400;width:max-content}
+.more>summary:hover{color:var(--text)}
+.more dl{display:grid;grid-template-columns:max-content 1fr;gap:.1rem .75rem;margin:0}
+.more dt{color:var(--muted)}
+.more dd{margin:0;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85rem}
+.more .tag-actions{margin-left:0}
+.tag-meta{color:var(--muted)}
+.tag-meta a{overflow-wrap:anywhere}
+.tag-meta a.muted{color:var(--muted);text-decoration:none}
+.tag-meta a.muted:hover{text-decoration:underline}
+.off .tag-head b,.off .tag-meta{opacity:.6}
+.tag-head .pill{font-size:.75rem;font-weight:500;padding:0 .5rem}
+.tag-actions{margin-top:.4rem}
 .tag-actions details[open]{flex-basis:100%}
-.del>summary{color:var(--muted);font-weight:400}
-.toggle button{padding:0;border:0;background:none;color:var(--muted);font:inherit;cursor:pointer}
+.del>summary{color:var(--muted);font-weight:400;list-style:none}
+.del>summary::-webkit-details-marker{display:none}
+.del>summary:hover,.toggle button:hover{color:var(--text)}
+.toggle button{padding:0;border:0;background:none;color:var(--muted);font:inherit;font-weight:400;cursor:pointer}
 .del form{padding:.75rem;margin:.4rem 0 .5rem;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
 .del form p:first-child{margin-top:0}
 .del input{background:var(--card)}
@@ -107,10 +126,14 @@ try{new MutationObserver(apply).observe(parent.document.documentElement,{attribu
 {{if .Tags}}
 <section class="card">
 <h2>Tags</h2>
-<ul class="tags">{{range .Tags}}<li><div class="tag"><div><b>{{.Name}}</b>{{if .DeviceID}}<br><a class="muted" href="/config/devices/device/{{.DeviceID}}" target="_top">{{.Entity}}</a>{{end}}</div>{{with .Report}}<span class="muted">{{$.At .Time "2006-01-02 15:04 MST"}} · <a href="https://www.openstreetmap.org/?mlat={{.Latitude}}&amp;mlon={{.Longitude}}#map=16/{{.Latitude}}/{{.Longitude}}" target="_blank" rel="noopener noreferrer">{{.Latitude}}, {{.Longitude}}</a> · ±{{.Accuracy}} m</span>{{else}}<span class="muted">no report yet</span>{{end}}{{if .PollingOff}}<span class="muted">Polling off</span>{{end}}</div>
+<ul class="tags">{{range .Tags}}<li{{if .PollingOff}} class="off"{{end}}>
+<div class="tag-head"><span class="dot{{with .Report}}{{if $.Fresh .Time}} ok{{else}} warn{{end}}{{end}}"></span><b>{{.Name}}</b>{{if .PollingOff}}<span class="pill">Polling off</span>{{end}}<span class="age">{{with .Report}}{{$.Ago .Time}}{{else}}no report yet{{end}}</span></div>
+<div class="tag-meta">{{with .Report}}<span>{{$.At .Time "2006-01-02 15:04 MST"}}</span><span><a href="https://www.openstreetmap.org/?mlat={{.Latitude}}&amp;mlon={{.Longitude}}#map=16/{{.Latitude}}/{{.Longitude}}" target="_blank" rel="noopener noreferrer">{{printf "%.5f, %.5f" .Latitude .Longitude}}</a> ±{{.Accuracy}} m</span>{{end}}{{if .DeviceID}}<a class="muted" href="/config/devices/device/{{.DeviceID}}" target="_top">{{.Entity}}</a>{{end}}</div>
+<details class="more"><summary>More</summary>
+<dl>{{with .ID}}<dt>ID</dt><dd>{{.}}</dd>{{end}}{{if not .PairedAt.IsZero}}<dt>Paired</dt><dd>{{$.At .PairedAt "2006-01-02 15:04 MST"}}</dd>{{end}}</dl>
 <div class="tag-actions"><form method="post" action="polling" class="toggle"><input type="hidden" name="file" value="{{.File}}">{{if .PollingOff}}<input type="hidden" name="on" value="1"><button>Resume polling</button>{{else}}<button>Stop polling</button>{{end}}</form>
 <details class="del"><summary>Rename</summary><form method="post" action="rename"><p class="muted">The name of the device in Home Assistant. Leave it empty to use the name from the tag's keys.</p><input type="hidden" name="file" value="{{.File}}"><label for="name-{{.File}}">Name</label><input id="name-{{.File}}" name="name" value="{{.Name}}" maxlength="100"><div class="actions"><button>Save</button></div></form></details>
-<details class="del"><summary>Delete</summary><form method="post" action="delete"><p class="muted">Removes the keys of {{.Name}} from the add-on and its device from Home Assistant. To get the tag back, import it again.</p><input type="hidden" name="file" value="{{.File}}"><button class="danger">Delete {{.Name}}</button></form></details></div></li>{{end}}</ul>
+<details class="del"><summary>Delete</summary><form method="post" action="delete"><p class="muted">Removes the keys of {{.Name}} from the add-on and its device from Home Assistant. To get the tag back, import it again.</p><input type="hidden" name="file" value="{{.File}}"><button class="danger">Delete {{.Name}}</button></form></details></div></details></li>{{end}}</ul>
 </section>
 <details class="card"><summary>Add a tag</summary>{{template "importform" .}}</details>
 {{else}}

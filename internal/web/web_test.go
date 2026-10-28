@@ -390,3 +390,18 @@ func TestTagsLinkToTheirHomeAssistantDevice(t *testing.T) {
 		t.Errorf("%d device links, want 1: the tag without an entity has none", n)
 	}
 }
+
+func TestAgo(t *testing.T) {
+	now := time.Date(2026, 10, 28, 18, 0, 0, 0, time.UTC)
+	v := view{now: now}
+	for d, want := range map[time.Duration]string{
+		30 * time.Second: "just now",
+		18 * time.Minute: "18 min ago",
+		3 * time.Hour:    "3 h ago",
+		50 * time.Hour:   "2 days ago",
+	} {
+		if got := v.Ago(now.Add(-d)); got != want {
+			t.Errorf("Ago(%v) = %q, want %q", d, got, want)
+		}
+	}
+}

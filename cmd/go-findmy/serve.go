@@ -279,7 +279,11 @@ func (s *service) setTags(tags []tag) {
 	for _, t := range tags {
 		if _, err := os.Stat(t.path); err == nil {
 			id := t.haTag().ID
-			out = append(out, web.TagStatus{File: t.name, ID: id, Name: s.named(t).Name, Report: s.reports[t.name], PollingOff: s.off[id]})
+			ts := web.TagStatus{File: t.name, ID: id, Name: s.named(t).Name, Report: s.reports[t.name], PollingOff: s.off[id]}
+			if t.acc != nil {
+				ts.PairedAt = t.acc.PairedAt()
+			}
+			out = append(out, ts)
 		}
 	}
 	s.status.Tags = out

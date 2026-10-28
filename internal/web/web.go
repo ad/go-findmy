@@ -38,6 +38,7 @@ type TagStatus struct {
 	DeviceID   string // device in Home Assistant, empty while unknown
 	Report     *findmy.Report
 	PollingOff bool
+	PairedAt   time.Time
 }
 
 type Status struct {
@@ -198,7 +199,7 @@ func (s *Server) render(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	sms, waiting := s.Login.Pending()
-	v := view{Status: s.Status(), Message: message, Failed: status >= 400, SMS: sms, Waiting: waiting, loc: cmp.Or(s.Location, time.UTC)}
+	v := view{Status: s.Status(), Message: message, Failed: status >= 400, SMS: sms, Waiting: waiting, loc: cmp.Or(s.Location, time.UTC), now: time.Now()}
 	if err := page.Execute(w, v); err != nil {
 		log.Printf("ingress page: %v", err)
 	}
@@ -212,11 +213,29 @@ type view struct {
 	Waiting bool // a sign-in waits for its code
 	SMS     bool // the code went out by SMS
 	loc     *time.Location
+	now     time.Time
 }
 
 // At formats t in the time zone of the server, with the zone name.
 func (v view) At(t time.Time, layout string) string {
 	return t.In(v.loc).Format(layout)
+}
+
+func (v view) Ago(t time.Time) string {
+	switch d := v.now.Sub(t); {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%d min ago", int(d.Minutes()))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%d h ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%d days ago", int(d.Hours()/24))
+	}
+}
+
+func (v view) Fresh(t time.Time) bool {
+	return v.now.Sub(t) < time.Hour
 }
 
 // Step is the one thing the user has to do now: sign in, enter the code, or nothing.
