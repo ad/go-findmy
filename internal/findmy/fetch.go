@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -130,19 +131,48 @@ func (f *Fetcher) sweepSecondary(ctx context.Context, a *Accessory, now time.Tim
 		log.Printf("debug %s: secondary sweep: %v", a.Identifier(), err)
 		return nil
 	}
+	newest := newestOf(reports)
+	if newest == nil {
+		log.Printf("debug %s: secondary sweep of 0..%d: no reports", a.Identifier(), len(keys)-1)
+		return nil
+	}
+	log.Printf("debug %s: secondary sweep of 0..%d: %d reports, newest %s at secondary index %d (primary %d/96 = %d): %s",
+		a.Identifier(), len(keys)-1, len(reports), newest.Time.Format(time.RFC3339), newest.key.Index, a.MaxIndex(now), a.MaxIndex(now)/96, timeline(reports))
+
+	// Both the batch and the sweep returned 8 reports, none from the last hours that Find My shows.
+	probe := a.chain(a.sks, max(newest.key.Index-1, 0), newest.key.Index+1, true)
+	e := newEntry(nil, probe, now)
+	e.StartDate = now.Add(-3 * time.Hour).UnixMilli()
+	e.StartDateSecondary = e.StartDate
+	recent, err := f.fetch(ctx, []fetchEntry{e}, probe)
+	if err != nil {
+		log.Printf("debug %s: last 3 hours of secondary %d..%d: %v", a.Identifier(), probe[0].Index, probe[len(probe)-1].Index, err)
+		return &newest.Report
+	}
+	log.Printf("debug %s: last 3 hours of secondary %d..%d: %d reports: %s", a.Identifier(), probe[0].Index, probe[len(probe)-1].Index, len(recent), timeline(recent))
+	if r := newestOf(recent); r != nil && r.Time.After(newest.Time) {
+		return &r.Report
+	}
+	return &newest.Report
+}
+
+func newestOf(reports []keyedReport) *keyedReport {
 	var newest *keyedReport
 	for _, r := range reports {
 		if newest == nil || r.Time.After(newest.Time) {
 			newest = &r
 		}
 	}
-	if newest == nil {
-		log.Printf("debug %s: secondary sweep of 0..%d: no reports", a.Identifier(), len(keys)-1)
-		return nil
+	return newest
+}
+
+func timeline(reports []keyedReport) string {
+	out := make([]string, len(reports))
+	for i, r := range reports {
+		out[i] = fmt.Sprintf("%s@%d", r.Time.Format(time.RFC3339), r.key.Index)
 	}
-	log.Printf("debug %s: secondary sweep of 0..%d: %d reports, newest %s at secondary index %d (primary %d/96 = %d)",
-		a.Identifier(), len(keys)-1, len(reports), newest.Time.Format(time.RFC3339), newest.key.Index, a.MaxIndex(now), a.MaxIndex(now)/96)
-	return &newest.Report
+	slices.Sort(out)
+	return strings.Join(out, " ")
 }
 
 func (f *Fetcher) latestAccessory(ctx context.Context, a *Accessory, now time.Time) (*Report, error) {
@@ -179,11 +209,11 @@ func (f *Fetcher) latestAccessory(ctx context.Context, a *Accessory, now time.Ti
 				latest = &r.Report
 			}
 		}
-		log.Printf("debug %s: batch %d/%d, primary index %d..%d: %d primary reports, newest %s at index %d; %d secondary, newest %s at secondary index %d (primary %d/96 = %d); alignment %s index %d",
+		log.Printf("debug %s: batch %d/%d, primary index %d..%d: %d primary reports, newest %s at index %d; %d secondary, newest %s at secondary index %d (primary %d/96 = %d); alignment %s index %d; %s",
 			id, from+n, len(batches), b.Primary[len(b.Primary)-1].Index, b.Primary[0].Index,
 			count[0], newest[0].Time.Format(time.RFC3339), newest[0].key.Index,
 			count[1], newest[1].Time.Format(time.RFC3339), newest[1].key.Index, hi, hi/96,
-			a.alignmentDate.Format(time.RFC3339), a.alignmentIndex)
+			a.alignmentDate.Format(time.RFC3339), a.alignmentIndex, timeline(reports))
 		if latest != nil {
 			delete(f.scanFrom, id)
 			return latest, nil
