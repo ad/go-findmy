@@ -139,17 +139,23 @@ func (f *Fetcher) sweepSecondary(ctx context.Context, a *Accessory, now time.Tim
 	log.Printf("debug %s: secondary sweep of 0..%d: %d reports, newest %s at secondary index %d (primary %d/96 = %d): %s",
 		a.Identifier(), len(keys)-1, len(reports), newest.Time.Format(time.RFC3339), newest.key.Index, a.MaxIndex(now), a.MaxIndex(now)/96, timeline(reports))
 
-	// Both the batch and the sweep returned 8 reports, none from the last hours that Find My shows.
-	probe := a.chain(a.sks, max(newest.key.Index-1, 0), newest.key.Index+1, true)
-	e := newEntry(nil, probe, now)
-	e.StartDate = now.Add(-3 * time.Hour).UnixMilli()
-	e.StartDateSecondary = e.StartDate
-	recent, err := f.fetch(ctx, []fetchEntry{e}, probe)
+	// Every response held exactly 8 reports while Find My shows newer ones: is that a cap per entry?
+	from := max(a.alignmentIndex, a.MaxIndex(now)-24)
+	probe := append(a.chain(a.skn, from, a.MaxIndex(now), false), a.chain(a.sks, max(newest.key.Index-1, 0), newest.key.Index+1, true)...)
+	entries = entries[:0]
+	for _, k := range probe {
+		if k.Secondary {
+			entries = append(entries, newEntry(nil, []Key{k}, now))
+		} else {
+			entries = append(entries, newEntry([]Key{k}, nil, now))
+		}
+	}
+	recent, err := f.fetch(ctx, entries, probe)
 	if err != nil {
-		log.Printf("debug %s: last 3 hours of secondary %d..%d: %v", a.Identifier(), probe[0].Index, probe[len(probe)-1].Index, err)
+		log.Printf("debug %s: one key per entry, primary %d..%d and secondary around %d: %v", a.Identifier(), from, a.MaxIndex(now), newest.key.Index, err)
 		return &newest.Report
 	}
-	log.Printf("debug %s: last 3 hours of secondary %d..%d: %d reports: %s", a.Identifier(), probe[0].Index, probe[len(probe)-1].Index, len(recent), timeline(recent))
+	log.Printf("debug %s: one key per entry, primary %d..%d and secondary around %d: %d reports: %s", a.Identifier(), from, a.MaxIndex(now), newest.key.Index, len(recent), timeline(recent))
 	if r := newestOf(recent); r != nil && r.Time.After(newest.Time) {
 		return &r.Report
 	}

@@ -356,8 +356,8 @@ func TestFetchAccessorySweepFindsSecondaryKeyFarFromGuess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if requests != MaxAccessoryRequests+1 {
-		t.Fatalf("%d requests, want %d batches and the sweep", requests, MaxAccessoryRequests)
+	if requests != MaxAccessoryRequests+2 {
+		t.Fatalf("%d requests, want %d batches, the sweep and the probe", requests, MaxAccessoryRequests)
 	}
 	if got == nil || !got.Time.Equal(at) {
 		t.Errorf("latest %+v, want a report at %v", got, at)
