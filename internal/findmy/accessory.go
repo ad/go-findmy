@@ -245,15 +245,6 @@ func secondaryRange(primary int) (first, last int) {
 	return primary/96 + 1, primary/96 + 2
 }
 
-// A tag away from its owner was found on none of the secondary keys secondaryRange gives.
-// shortcut: a wide guess ahead of secondaryRange, narrow it once the log shows the real offset.
-const secondaryLookahead = 60
-
-func (a *Accessory) secondaryAhead(primary int) []Key {
-	_, last := secondaryRange(primary)
-	return a.chain(a.sks, last+1, last+secondaryLookahead, true)
-}
-
 func (a *Accessory) chain(seed []byte, from, to int, secondary bool) []Key {
 	sk := seed
 	for range from {

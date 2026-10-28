@@ -310,7 +310,7 @@ func TestFetchAccessoryStopsAtFirstBatchWithReports(t *testing.T) {
 		))
 	})
 
-	got, err := f.LatestAccessory(context.Background(), a, now)
+	got, err := f.latestAccessory(context.Background(), a, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,11 +325,12 @@ func TestFetchAccessoryStopsAtFirstBatchWithReports(t *testing.T) {
 	}
 }
 
-func TestFetchAccessoryFindsSecondaryKeyAheadOfGuess(t *testing.T) {
+func TestFetchAccessorySweepFindsSecondaryKeyFarFromGuess(t *testing.T) {
 	v := loadVectors(t)
 	a := loadAccessory(t, v.FreshAccessory)
 	now := mustTime(t, v.Batches.Now)
-	target := a.secondaryAhead(a.MaxIndex(now))[30]
+	far := a.MaxIndex(now)/96 + 300
+	target := a.chain(a.sks, far, far, true)[0]
 	at := now.Add(-time.Hour).Truncate(time.Second).UTC()
 	alignDate, alignIndex := a.alignmentDate, a.alignmentIndex
 
@@ -342,19 +343,21 @@ func TestFetchAccessoryFindsSecondaryKeyAheadOfGuess(t *testing.T) {
 		}
 		json.NewDecoder(r.Body).Decode(&body)
 		requests++
-		if !slices.Contains(body.Fetch[0].SecondaryIDs, target.ID) {
-			io.WriteString(w, `{"acsnLocations":{"statusCode":"200","locationPayload":[]}}`)
-			return
+		for _, e := range body.Fetch {
+			if slices.Contains(e.SecondaryIDs, target.ID) {
+				io.WriteString(w, payloadResponse(target.ID, sealReport(t, target.Private, at, 3)))
+				return
+			}
 		}
-		io.WriteString(w, payloadResponse(target.ID, sealReport(t, target.Private, at, 3)))
+		io.WriteString(w, `{"acsnLocations":{"statusCode":"200","locationPayload":[]}}`)
 	})
 
 	got, err := f.LatestAccessory(context.Background(), a, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if requests != 1 {
-		t.Fatalf("%d requests, want 1", requests)
+	if requests != MaxAccessoryRequests+1 {
+		t.Fatalf("%d requests, want %d batches and the sweep", requests, MaxAccessoryRequests)
 	}
 	if got == nil || !got.Time.Equal(at) {
 		t.Errorf("latest %+v, want a report at %v", got, at)
@@ -442,7 +445,7 @@ func TestFetchAccessoryCapsRequestsAndResumesNextPoll(t *testing.T) {
 	})
 	ctx := context.Background()
 
-	got, err := f.LatestAccessory(ctx, a, now)
+	got, err := f.latestAccessory(ctx, a, now)
 	if err != nil || got != nil {
 		t.Fatalf("poll 1: %+v, %v; want no report", got, err)
 	}
@@ -452,7 +455,7 @@ func TestFetchAccessoryCapsRequestsAndResumesNextPoll(t *testing.T) {
 	}
 
 	firstIDs = nil
-	got, err = f.LatestAccessory(ctx, a, now)
+	got, err = f.latestAccessory(ctx, a, now)
 	if err != nil || got == nil {
 		t.Fatalf("poll 2: %+v, %v; want a report", got, err)
 	}
@@ -462,7 +465,7 @@ func TestFetchAccessoryCapsRequestsAndResumesNextPoll(t *testing.T) {
 	}
 
 	firstIDs = nil
-	if _, err := f.LatestAccessory(ctx, a, now); err != nil {
+	if _, err := f.latestAccessory(ctx, a, now); err != nil {
 		t.Fatal(err)
 	}
 	if len(firstIDs) == 0 || firstIDs[0] != a.Batches(now)[0].Primary[0].ID {

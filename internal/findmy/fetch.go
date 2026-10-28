@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"slices"
 	"time"
 )
 
@@ -106,13 +107,51 @@ func (f *Fetcher) LatestStatic(ctx context.Context, keys []Key, now time.Time) (
 const MaxAccessoryRequests = 3
 
 func (f *Fetcher) LatestAccessory(ctx context.Context, a *Accessory, now time.Time) (*Report, error) {
+	latest, err := f.latestAccessory(ctx, a, now)
+	if err != nil {
+		return nil, err
+	}
+	if swept := f.sweepSecondary(ctx, a, now); swept != nil && (latest == nil || swept.Time.After(latest.Time)) {
+		return swept, nil
+	}
+	return latest, nil
+}
+
+// A tag away from its owner showed in Find My but on none of the secondary keys secondaryRange gives.
+// shortcut: asks for every secondary key up to 400 days past the guess on each poll; narrow it once the log shows the offset.
+func (f *Fetcher) sweepSecondary(ctx context.Context, a *Accessory, now time.Time) *Report {
+	keys := a.chain(a.sks, 0, a.MaxIndex(now)/96+400, true)
+	var entries []fetchEntry
+	for c := range slices.Chunk(keys, maxBatchIDs) {
+		entries = append(entries, newEntry(nil, c, now))
+	}
+	reports, err := f.fetch(ctx, entries, keys)
+	if err != nil {
+		log.Printf("debug %s: secondary sweep: %v", a.Identifier(), err)
+		return nil
+	}
+	var newest *keyedReport
+	for _, r := range reports {
+		if newest == nil || r.Time.After(newest.Time) {
+			newest = &r
+		}
+	}
+	if newest == nil {
+		log.Printf("debug %s: secondary sweep of 0..%d: no reports", a.Identifier(), len(keys)-1)
+		return nil
+	}
+	log.Printf("debug %s: secondary sweep of 0..%d: %d reports, newest %s at secondary index %d (primary %d/96 = %d)",
+		a.Identifier(), len(keys)-1, len(reports), newest.Time.Format(time.RFC3339), newest.key.Index, a.MaxIndex(now), a.MaxIndex(now)/96)
+	return &newest.Report
+}
+
+func (f *Fetcher) latestAccessory(ctx context.Context, a *Accessory, now time.Time) (*Report, error) {
 	if f.scanFrom == nil {
 		f.scanFrom = map[string]int{}
 	}
 	id := a.Identifier()
 	batches := a.Batches(now)
 	hi := batches[0].Primary[0].Index
-	batches[0].Secondary = append(batches[0].Secondary, a.secondaryAhead(hi)...)
 	from := f.scanFrom[id] % len(batches)
 	for n, b := range batches[from:min(from+MaxAccessoryRequests, len(batches))] {
 		keys := append(append([]Key(nil), b.Primary...), b.Secondary...)
