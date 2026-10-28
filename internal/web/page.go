@@ -49,6 +49,7 @@ details[open]>summary{margin-bottom:.5rem}
 .tag-actions{display:flex;flex-wrap:wrap;gap:0 1.25rem;margin-top:.3rem;font-size:.9rem}
 .tag-actions details[open]{flex-basis:100%}
 .del>summary{color:var(--muted);font-weight:400}
+.toggle button{padding:0;border:0;background:none;color:var(--muted);font:inherit;cursor:pointer}
 .del form{padding:.75rem;margin:.4rem 0 .5rem;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
 .del form p:first-child{margin-top:0}
 .del input{background:var(--card)}
@@ -106,8 +107,9 @@ try{new MutationObserver(apply).observe(parent.document.documentElement,{attribu
 {{if .Tags}}
 <section class="card">
 <h2>Tags</h2>
-<ul class="tags">{{range .Tags}}<li><div class="tag"><div><b>{{.Name}}</b>{{if .DeviceID}}<br><a class="muted" href="/config/devices/device/{{.DeviceID}}" target="_top">{{.Entity}}</a>{{end}}</div>{{with .Report}}<span class="muted">{{$.At .Time "2006-01-02 15:04 MST"}} · <a href="https://www.openstreetmap.org/?mlat={{.Latitude}}&amp;mlon={{.Longitude}}#map=16/{{.Latitude}}/{{.Longitude}}" target="_blank" rel="noopener noreferrer">{{.Latitude}}, {{.Longitude}}</a> · ±{{.Accuracy}} m</span>{{else}}<span class="muted">no report yet</span>{{end}}</div>
-<div class="tag-actions"><details class="del"><summary>Rename</summary><form method="post" action="rename"><p class="muted">The name of the device in Home Assistant. Leave it empty to use the name from the tag's keys.</p><input type="hidden" name="file" value="{{.File}}"><label for="name-{{.File}}">Name</label><input id="name-{{.File}}" name="name" value="{{.Name}}" maxlength="100"><div class="actions"><button>Save</button></div></form></details>
+<ul class="tags">{{range .Tags}}<li><div class="tag"><div><b>{{.Name}}</b>{{if .DeviceID}}<br><a class="muted" href="/config/devices/device/{{.DeviceID}}" target="_top">{{.Entity}}</a>{{end}}</div>{{with .Report}}<span class="muted">{{$.At .Time "2006-01-02 15:04 MST"}} · <a href="https://www.openstreetmap.org/?mlat={{.Latitude}}&amp;mlon={{.Longitude}}#map=16/{{.Latitude}}/{{.Longitude}}" target="_blank" rel="noopener noreferrer">{{.Latitude}}, {{.Longitude}}</a> · ±{{.Accuracy}} m</span>{{else}}<span class="muted">no report yet</span>{{end}}{{if .PollingOff}}<span class="muted">Polling off</span>{{end}}</div>
+<div class="tag-actions"><form method="post" action="polling" class="toggle"><input type="hidden" name="file" value="{{.File}}">{{if .PollingOff}}<input type="hidden" name="on" value="1"><button>Resume polling</button>{{else}}<button>Stop polling</button>{{end}}</form>
+<details class="del"><summary>Rename</summary><form method="post" action="rename"><p class="muted">The name of the device in Home Assistant. Leave it empty to use the name from the tag's keys.</p><input type="hidden" name="file" value="{{.File}}"><label for="name-{{.File}}">Name</label><input id="name-{{.File}}" name="name" value="{{.Name}}" maxlength="100"><div class="actions"><button>Save</button></div></form></details>
 <details class="del"><summary>Delete</summary><form method="post" action="delete"><p class="muted">Removes the keys of {{.Name}} from the add-on and its device from Home Assistant. To get the tag back, import it again.</p><input type="hidden" name="file" value="{{.File}}"><button class="danger">Delete {{.Name}}</button></form></details></div></li>{{end}}</ul>
 </section>
 <details class="card"><summary>Add a tag</summary>{{template "importform" .}}</details>

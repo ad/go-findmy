@@ -31,12 +31,13 @@ type Login interface {
 }
 
 type TagStatus struct {
-	File     string // the key file in KeysDir, what Delete takes
-	ID       string // the tag ID in the MQTT topics
-	Name     string
-	Entity   string // entity_id in Home Assistant, empty while unknown
-	DeviceID string // device in Home Assistant, empty while unknown
-	Report   *findmy.Report
+	File       string // the key file in KeysDir, what Delete takes
+	ID         string // the tag ID in the MQTT topics
+	Name       string
+	Entity     string // entity_id in Home Assistant, empty while unknown
+	DeviceID   string // device in Home Assistant, empty while unknown
+	Report     *findmy.Report
+	PollingOff bool
 }
 
 type Status struct {
@@ -57,8 +58,9 @@ type Server struct {
 	// Delete removes the tag kept in the key file and returns its name.
 	Delete func(file string) (name string, err error)
 	// Rename gives the tag kept in the key file a new name; an empty name restores the default.
-	Rename  func(file, name string) error
-	SignOut func() error
+	Rename     func(file, name string) error
+	SetPolling func(file string, on bool) error
+	SignOut    func() error
 	// Location is the time zone the page shows times in; nil means UTC.
 	Location *time.Location
 }
@@ -110,6 +112,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.render(w, http.StatusOK, "Renamed to "+name+".")
+	case r.Method == http.MethodPost && r.URL.Path == "/polling":
+		on := r.FormValue("on") != ""
+		if err := s.SetPolling(r.FormValue("file"), on); err != nil {
+			s.render(w, http.StatusBadRequest, "Polling change failed: "+err.Error())
+			return
+		}
+		if on {
+			s.render(w, http.StatusOK, "Polling resumed. The location updates after the next poll.")
+			return
+		}
+		s.render(w, http.StatusOK, "Polling stopped. Home Assistant keeps the last location.")
 	case r.Method == http.MethodPost && r.URL.Path == "/delete":
 		name, err := s.Delete(r.FormValue("file"))
 		if err != nil {

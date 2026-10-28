@@ -229,6 +229,12 @@ func TestWaitHonoursLastPollAcrossRestarts(t *testing.T) {
 	if d := restarted.wait(15*time.Minute, now); d != 10*time.Minute {
 		t.Errorf("wait %v after restart, want 10m", d)
 	}
+	if d := restarted.startWait(now); d != 0 {
+		t.Errorf("start waits %v five minutes after the last poll, want 0", d)
+	}
+	if d := restarted.startWait(now.Add(-4 * time.Minute)); d != time.Minute {
+		t.Errorf("start waits %v a minute after the last poll, want 1m", d)
+	}
 }
 
 func TestStatusShowsTagsAndLastPollRightAfterRestart(t *testing.T) {
@@ -375,12 +381,44 @@ func TestRenameRejectsUnknownTagsAndLongNames(t *testing.T) {
 	}
 }
 
+func TestStoppedTagIsNotFetchedAcrossRestartsUntilResumed(t *testing.T) {
+	fx := newPollFixture(t, signedIn)
+	at := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	if err := fx.s.SetPolling("tag.keys", false); err != nil {
+		t.Fatal(err)
+	}
+	if st := fx.s.Status(); len(st.Tags) != 1 || !st.Tags[0].PollingOff {
+		t.Errorf("status %+v, want the tag with polling off", st.Tags)
+	}
+
+	restarted := newService(fx.keysDir, fx.s.dataDir, fx.s.fetcher, fx.s.acct, fx.pub)
+	restarted.poll(context.Background(), at)
+	if fx.requests != 0 {
+		t.Errorf("%d requests for a stopped tag", fx.requests)
+	}
+	if _, ok := fx.pub["homeassistant/device_tracker/findmy/"+ha.ID(fx.id)+"/config"]; !ok {
+		t.Error("a stopped tag was not announced to Home Assistant")
+	}
+
+	if err := restarted.SetPolling("tag.keys", true); err != nil {
+		t.Fatal(err)
+	}
+	restarted.poll(context.Background(), at.Add(15*time.Minute))
+	if fx.requests == 0 {
+		t.Error("a resumed tag was not fetched")
+	}
+	if err := restarted.SetPolling("missing.keys", false); err == nil {
+		t.Error("stopped a tag that does not exist")
+	}
+}
+
 func TestDeleteForgetsTheName(t *testing.T) {
 	fx := newPollFixture(t, signedIn)
 	fx.s.Rename("tag.keys", "My keys")
+	fx.s.SetPolling("tag.keys", false)
 	fx.s.Delete("tag.keys")
-	if len(fx.s.names) != 0 {
-		t.Errorf("names left: %v", fx.s.names)
+	if len(fx.s.names) != 0 || len(fx.s.off) != 0 {
+		t.Errorf("names left: %v, polling off left: %v", fx.s.names, fx.s.off)
 	}
 }
 

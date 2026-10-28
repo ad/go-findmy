@@ -32,8 +32,11 @@ const (
 	ingressAddr  = ":8099"
 	lastPollFile = "last_poll"
 	namesFile    = "names.json"
+	offFile      = "polling_off.json"
 	maxNameLen   = 100
 	minInterval  = 15 * time.Minute
+	// A crash loop restarts the add-on every few seconds; each start must not ask Apple again.
+	restartGap = 2 * time.Minute
 )
 
 func pollInterval(minutes int) time.Duration {
@@ -56,17 +59,13 @@ type service struct {
 	reports map[string]*findmy.Report
 	links   links
 	names   map[string]string // names the user gave, by tag ID; they win over the name in the key file
+	off     map[string]bool   // tags the user stopped polling, by tag ID
 }
 
 func newService(keysDir, dataDir string, f *findmy.Fetcher, acct *icloud.Account, pub ha.Publisher) *service {
 	f.Credentials = acct
-	s := &service{keysDir: keysDir, dataDir: dataDir, fetcher: f, acct: acct, pub: pub, reports: map[string]*findmy.Report{}, names: map[string]string{}}
-	if data, err := os.ReadFile(filepath.Join(dataDir, namesFile)); err == nil {
-		if err := json.Unmarshal(data, &s.names); err != nil {
-			log.Printf("%s: %v", namesFile, err)
-			s.names = map[string]string{}
-		}
-	}
+	s := &service{keysDir: keysDir, dataDir: dataDir, fetcher: f, acct: acct, pub: pub, reports: map[string]*findmy.Report{},
+		names: loadMap[string](dataDir, namesFile), off: loadMap[bool](dataDir, offFile)}
 	s.status.LastPoll = s.lastPoll()
 	if tags, err := loadTags(keysDir); err != nil {
 		log.Print(err)
@@ -125,13 +124,26 @@ func (s *service) announce(t tag) error {
 	return ha.AnnounceTag(s.pub, ht)
 }
 
-// saveNames writes names.json; s.mu must be held.
-func (s *service) saveNames() error {
-	data, err := json.Marshal(s.names)
+func loadMap[V any](dir, file string) map[string]V {
+	m := map[string]V{}
+	data, err := os.ReadFile(filepath.Join(dir, file))
+	if err != nil {
+		return m
+	}
+	if err := json.Unmarshal(data, &m); err != nil {
+		log.Printf("%s: %v", file, err)
+		return map[string]V{}
+	}
+	return m
+}
+
+// saveJSON writes v to file in the data dir; s.mu must be held.
+func (s *service) saveJSON(file string, v any) error {
+	data, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(s.dataDir, namesFile)
+	path := filepath.Join(s.dataDir, file)
 	if err := os.WriteFile(path+".tmp", data, 0o600); err != nil {
 		return err
 	}
@@ -162,6 +174,10 @@ func (s *service) Status() web.Status {
 
 func (s *service) wait(interval time.Duration, now time.Time) time.Duration {
 	return max(s.lastPoll().Add(interval).Sub(now), 0)
+}
+
+func (s *service) startWait(now time.Time) time.Duration {
+	return s.wait(restartGap, now)
 }
 
 func (s *service) lastPoll() time.Time {
@@ -206,7 +222,10 @@ func (s *service) fetchAndPublish(ctx context.Context, now time.Time) error {
 		return errors.Join(append(errs, err, s.setLoginRequired(s.credentials() == ""))...)
 	}
 
-	reports, err := latest(ctx, s.fetcher, tags, now)
+	s.mu.Lock()
+	polled := slices.DeleteFunc(slices.Clone(tags), func(t tag) bool { return s.off[t.haTag().ID] })
+	s.mu.Unlock()
+	reports, err := latest(ctx, s.fetcher, polled, now)
 	errs = append(errs, err, s.setLoginRequired(s.credentials() == ""))
 
 	for _, t := range tags {
@@ -259,7 +278,8 @@ func (s *service) setTags(tags []tag) {
 	out := make([]web.TagStatus, 0, len(tags))
 	for _, t := range tags {
 		if _, err := os.Stat(t.path); err == nil {
-			out = append(out, web.TagStatus{File: t.name, ID: t.haTag().ID, Name: s.named(t).Name, Report: s.reports[t.name]})
+			id := t.haTag().ID
+			out = append(out, web.TagStatus{File: t.name, ID: id, Name: s.named(t).Name, Report: s.reports[t.name], PollingOff: s.off[id]})
 		}
 	}
 	s.status.Tags = out
@@ -297,7 +317,13 @@ func (s *service) Delete(file string) (string, error) {
 	ht := s.named(t)
 	if _, ok := s.names[ht.ID]; ok {
 		delete(s.names, ht.ID)
-		if err := s.saveNames(); err != nil {
+		if err := s.saveJSON(namesFile, s.names); err != nil {
+			log.Print(err)
+		}
+	}
+	if s.off[ht.ID] {
+		delete(s.off, ht.ID)
+		if err := s.saveJSON(offFile, s.off); err != nil {
 			log.Print(err)
 		}
 	}
@@ -336,7 +362,7 @@ func (s *service) Rename(file, name string) error {
 	} else {
 		s.names[id] = name
 	}
-	err = s.saveNames()
+	err = s.saveJSON(namesFile, s.names)
 	for j := range s.status.Tags {
 		if s.status.Tags[j].File == t.name {
 			s.status.Tags[j].Name = s.named(t).Name
@@ -347,6 +373,33 @@ func (s *service) Rename(file, name string) error {
 		return err
 	}
 	return s.announce(t)
+}
+
+// A stopped tag stays in Home Assistant with its last location.
+func (s *service) SetPolling(file string, on bool) error {
+	tags, err := loadTags(s.keysDir)
+	if err != nil {
+		return err
+	}
+	i := slices.IndexFunc(tags, func(t tag) bool { return t.name == file })
+	if i < 0 {
+		return errors.New("no such tag")
+	}
+	id := tags[i].haTag().ID
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if on {
+		delete(s.off, id)
+	} else {
+		s.off[id] = true
+	}
+	for j := range s.status.Tags {
+		if s.status.Tags[j].File == file {
+			s.status.Tags[j].PollingOff = !on
+		}
+	}
+	return s.saveJSON(offFile, s.off)
 }
 
 // location is the time zone of the page: the add-on option, else the TZ Supervisor passes to the
@@ -500,16 +553,18 @@ func serve() {
 	}
 	login := &ingressLogin{acct: acct, provision: sc.Provision, signedIn: s.signedIn}
 	go func() {
-		log.Fatal(http.ListenAndServe(ingressAddr, &web.Server{Login: login, KeysDir: s.keysDir, Status: s.Status, Delete: s.Delete, Rename: s.Rename, SignOut: s.SignOut, Location: loc}))
+		log.Fatal(http.ListenAndServe(ingressAddr, &web.Server{Login: login, KeysDir: s.keysDir, Status: s.Status, Delete: s.Delete, Rename: s.Rename, SetPolling: s.SetPolling, SignOut: s.SignOut, Location: loc}))
 	}()
 
 	log.Printf("polling every %v", interval)
+	next := s.startWait(time.Now())
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(s.wait(interval, time.Now())):
+		case <-time.After(next):
 		}
 		s.poll(ctx, time.Now())
+		next = s.wait(interval, time.Now())
 	}
 }

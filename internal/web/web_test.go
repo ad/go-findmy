@@ -352,6 +352,34 @@ func TestEachTagCanBeRenamed(t *testing.T) {
 	}
 }
 
+func TestEachTagCanStopAndResumePolling(t *testing.T) {
+	s, _ := newServer(t)
+	signedIn(s, []TagStatus{{File: "keys.json", Name: "Keys"}, {File: "bag.json", Name: "Bag", PollingOff: true}})
+	var file string
+	var on bool
+	s.SetPolling = func(f string, o bool) error {
+		file, on = f, o
+		if f == "bad.json" {
+			return errors.New("no such tag")
+		}
+		return nil
+	}
+	shows(t, do(s, http.MethodGet, "/", nil).Body.String(), []string{`action="polling"`, "Stop polling", "Resume polling", "Polling off"}, nil)
+
+	w := do(s, http.MethodPost, "/polling", url.Values{"file": {"keys.json"}})
+	if w.Code != http.StatusOK || file != "keys.json" || on || !strings.Contains(w.Body.String(), "Polling stopped") {
+		t.Errorf("stop: status %d, got %q on=%v", w.Code, file, on)
+	}
+	w = do(s, http.MethodPost, "/polling", url.Values{"file": {"bag.json"}, "on": {"1"}})
+	if w.Code != http.StatusOK || file != "bag.json" || !on || !strings.Contains(w.Body.String(), "Polling resumed") {
+		t.Errorf("resume: status %d, got %q on=%v", w.Code, file, on)
+	}
+	w = do(s, http.MethodPost, "/polling", url.Values{"file": {"bad.json"}})
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "no such tag") {
+		t.Errorf("status %d, body lacks the error", w.Code)
+	}
+}
+
 func TestTagsLinkToTheirHomeAssistantDevice(t *testing.T) {
 	s, _ := newServer(t)
 	linked := []TagStatus{{File: "keys.json", Name: "Keys", Entity: "device_tracker.keys", DeviceID: "dev1"}, {File: "bag.json", Name: "Bag"}}
