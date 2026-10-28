@@ -1,5 +1,5 @@
 name: Find My
-version: "0.4.6"
+version: "0.4.7"
 slug: findmy
 image: ghcr.io/ad/go-findmy-{arch}
 description: AirTags and OpenHaystack tags as device_tracker entities, no Mac needed
