@@ -325,6 +325,45 @@ func TestFetchAccessoryStopsAtFirstBatchWithReports(t *testing.T) {
 	}
 }
 
+func TestFetchAccessoryFindsSecondaryKeyAheadOfGuess(t *testing.T) {
+	v := loadVectors(t)
+	a := loadAccessory(t, v.FreshAccessory)
+	now := mustTime(t, v.Batches.Now)
+	target := a.secondaryAhead(a.MaxIndex(now))[30]
+	at := now.Add(-time.Hour).Truncate(time.Second).UTC()
+	alignDate, alignIndex := a.alignmentDate, a.alignmentIndex
+
+	requests := 0
+	f, _ := newTestFetcher(t, func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Fetch []struct {
+				SecondaryIDs []string `json:"secondaryIds"`
+			} `json:"fetch"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		requests++
+		if !slices.Contains(body.Fetch[0].SecondaryIDs, target.ID) {
+			io.WriteString(w, `{"acsnLocations":{"statusCode":"200","locationPayload":[]}}`)
+			return
+		}
+		io.WriteString(w, payloadResponse(target.ID, sealReport(t, target.Private, at, 3)))
+	})
+
+	got, err := f.LatestAccessory(context.Background(), a, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 {
+		t.Fatalf("%d requests, want 1", requests)
+	}
+	if got == nil || !got.Time.Equal(at) {
+		t.Errorf("latest %+v, want a report at %v", got, at)
+	}
+	if a.alignmentIndex != alignIndex || !a.alignmentDate.Equal(alignDate) {
+		t.Errorf("alignment moved to %d at %v by a secondary report", a.alignmentIndex, a.alignmentDate)
+	}
+}
+
 func TestFetchRejectsBadAppleStatus(t *testing.T) {
 	f, _ := newTestFetcher(t, func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, `{"acsnLocations":{"statusCode":"500"}}`)

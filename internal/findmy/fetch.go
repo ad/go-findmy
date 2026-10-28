@@ -111,6 +111,8 @@ func (f *Fetcher) LatestAccessory(ctx context.Context, a *Accessory, now time.Ti
 	}
 	id := a.Identifier()
 	batches := a.Batches(now)
+	hi := batches[0].Primary[0].Index
+	batches[0].Secondary = append(batches[0].Secondary, a.secondaryAhead(hi)...)
 	from := f.scanFrom[id] % len(batches)
 	for n, b := range batches[from:min(from+MaxAccessoryRequests, len(batches))] {
 		keys := append(append([]Key(nil), b.Primary...), b.Secondary...)
@@ -130,15 +132,18 @@ func (f *Fetcher) LatestAccessory(ctx context.Context, a *Accessory, now time.Ti
 			if r.Time.After(newest[kind].Time) {
 				newest[kind] = r
 			}
-			a.UpdateAlignment(r.Time, r.key.Index)
+			// A secondary key spans a day of primary indices, so it cannot tell which one the tag was at.
+			if !r.key.Secondary {
+				a.UpdateAlignment(r.Time, r.key.Index)
+			}
 			if latest == nil || r.Time.After(latest.Time) {
 				latest = &r.Report
 			}
 		}
-		log.Printf("debug %s: batch %d/%d, primary index %d..%d: %d primary reports, newest %s at index %d; %d secondary, newest %s at index %d; alignment %s index %d",
+		log.Printf("debug %s: batch %d/%d, primary index %d..%d: %d primary reports, newest %s at index %d; %d secondary, newest %s at secondary index %d (primary %d/96 = %d); alignment %s index %d",
 			id, from+n, len(batches), b.Primary[len(b.Primary)-1].Index, b.Primary[0].Index,
 			count[0], newest[0].Time.Format(time.RFC3339), newest[0].key.Index,
-			count[1], newest[1].Time.Format(time.RFC3339), newest[1].key.Index,
+			count[1], newest[1].Time.Format(time.RFC3339), newest[1].key.Index, hi, hi/96,
 			a.alignmentDate.Format(time.RFC3339), a.alignmentIndex)
 		if latest != nil {
 			delete(f.scanFrom, id)

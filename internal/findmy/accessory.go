@@ -193,11 +193,7 @@ func (a *Accessory) KeysAt(i int) []Key {
 		return nil
 	}
 	s1, s2 := secondaryRange(i)
-	keys := append(a.chain(a.skn, i, i, false), a.chain(a.sks, s1, s2, true)...)
-	for j := range keys {
-		keys[j].Index = i
-	}
-	return keys
+	return append(a.chain(a.skn, i, i, false), a.chain(a.sks, s1, s2, true)...)
 }
 
 type Batch struct {
@@ -235,10 +231,8 @@ func (a *Accessory) Batches(now time.Time) []Batch {
 			out = append(out, cur)
 			cur, seen, fresh = Batch{}, map[string]bool{}, s
 		}
-		p.Index = i
 		cur.Primary = append(cur.Primary, p)
 		for _, k := range fresh {
-			k.Index = i
 			seen[k.ID] = true
 			cur.Secondary = append(cur.Secondary, k)
 		}
@@ -251,19 +245,28 @@ func secondaryRange(primary int) (first, last int) {
 	return primary/96 + 1, primary/96 + 2
 }
 
+// A tag away from its owner was found on none of the secondary keys secondaryRange gives.
+// shortcut: a wide guess ahead of secondaryRange, narrow it once the log shows the real offset.
+const secondaryLookahead = 60
+
+func (a *Accessory) secondaryAhead(primary int) []Key {
+	_, last := secondaryRange(primary)
+	return a.chain(a.sks, last+1, last+secondaryLookahead, true)
+}
+
 func (a *Accessory) chain(seed []byte, from, to int, secondary bool) []Key {
 	sk := seed
 	for range from {
 		sk = x963(sk, "update", 32)
 	}
 	keys := make([]Key, 0, to-from+1)
-	for range to - from + 1 {
+	for i := from; i <= to; i++ {
 		priv := derivePrivate(a.masterKey, sk)
 		k, err := ecdsa.ParseRawPrivateKey(elliptic.P224(), priv)
 		if err != nil {
 			panic(err)
 		}
-		keys = append(keys, Key{ID: hashedKey(advKey(k)), Private: priv, Secondary: secondary})
+		keys = append(keys, Key{ID: hashedKey(advKey(k)), Private: priv, Index: i, Secondary: secondary})
 		sk = x963(sk, "update", 32)
 	}
 	return keys
